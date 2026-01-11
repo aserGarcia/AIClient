@@ -1,0 +1,349 @@
+use iced::alignment::{Horizontal, Vertical};
+use iced::widget::{Space, button, column, container, row, scrollable, text, text_editor, tooltip};
+use iced::{Element, Font};
+use iced::{Length, Task};
+
+const CHAT_FONT: Font = Font::with_name("chat-icons");
+
+fn main() -> iced::Result {
+    iced::application(
+        SecureClient::default,
+        SecureClient::update,
+        SecureClient::view,
+    )
+    .title(SecureClient::title)
+    .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
+    .run()
+}
+
+// Drives the dynamic state of the GUI
+struct SecureClient {
+    input: text_editor::Content,
+    chats: Vec<Chat>,
+    current_chat_id: Option<usize>,
+}
+
+#[derive(Clone)]
+enum Message {
+    NewChat,
+    OpenChat(usize),
+    DeleteChat(usize),
+    InputChange(text_editor::Action),
+    SubmitMessage,
+}
+
+struct Chat {
+    id: usize,
+    title: String,
+    messages: Vec<ChatMessage>,
+}
+
+struct ChatMessage {
+    content: String,
+    is_reply: bool,
+}
+
+impl Default for SecureClient {
+    fn default() -> Self {
+        Self {
+            input: text_editor::Content::new(),
+            chats: Vec::new(),
+            current_chat_id: None,
+        }
+    }
+}
+
+impl SecureClient {
+    fn title(&self) -> String {
+        "SecureClient AI".to_string()
+    }
+
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::NewChat => {
+                let chat = Chat {
+                    id: self.chats.len(),
+                    title: format!("Chat {}", self.chats.len() + 1),
+                    messages: Vec::new(),
+                };
+                self.current_chat_id = Some(chat.id);
+                self.chats.push(chat);
+            }
+            Message::OpenChat(id) => {
+                self.current_chat_id = Some(id);
+            }
+            Message::DeleteChat(id) => {
+                self.chats.retain(|chat| chat.id != id);
+
+                if self.current_chat_id == Some(id) {
+                    self.current_chat_id = None;
+                }
+            }
+            Message::InputChange(action) => {
+                self.input.perform(action);
+            }
+            Message::SubmitMessage => {
+                if let Some(id) = self.current_chat_id {
+                    let message = ChatMessage {
+                        content: self.input.text(),
+                        is_reply: false,
+                    };
+                    self.chats[id].messages.push(message);
+                    self.input = text_editor::Content::new();
+
+                    let default_reply = ChatMessage {
+                        content: "This is a default AI reply".to_string(),
+                        is_reply: true,
+                    };
+                    self.chats[id].messages.push(default_reply);
+                }
+            }
+        }
+        Task::none()
+    }
+
+    fn view(&self) -> iced::Element<'_, Message> {
+        //
+        // Sidebar Widgets
+        //
+
+        //
+        // Recent Messages
+        //
+        // TODO: Update per account
+        // TODO: Replace default example messages
+
+        let chat_list: Vec<Element<Message>> = self
+            .chats
+            .iter()
+            .map(|chat| {
+                row![
+                    button(text(chat.title.clone()).size(13))
+                        .on_press(Message::OpenChat(chat.id))
+                        .style(styles::open_chat_button),
+                    Space::new().width(Length::Fill),
+                    button(text("\u{F146}").font(CHAT_FONT).size(12))
+                        .on_press(Message::DeleteChat(chat.id))
+                        .style(styles::delete_chat_button)
+                ]
+                .align_y(Vertical::Center)
+                .into()
+            })
+            .collect();
+
+        let chat_messages = column(chat_list)
+            .spacing(10)
+            .padding(10)
+            .height(Length::Fill);
+
+        let settings = row![
+            container(text("🟢").size(24)),
+            container(column![text("UserId").size(16), text("Plan").size(12)])
+        ]
+        .align_y(Vertical::Center)
+        .spacing(10);
+        let recent_messages = container(column![chat_messages, settings]);
+
+        //
+        // New chat button
+        //
+        let new_chat = tooltip(
+            button(text('\u{F0FE}').font(CHAT_FONT).size(12))
+                .on_press(Message::NewChat)
+                .style(styles::new_chat_button),
+            text("New chat").size(12),
+            tooltip::Position::Right,
+        );
+
+        let sidebar = container(
+            column![
+                row![
+                    text("Recent conversations").size(12),
+                    Space::new().width(Length::Fill),
+                    new_chat
+                ]
+                .align_y(Vertical::Center),
+                recent_messages
+            ]
+            .padding(20),
+        )
+        .width(200)
+        .height(Length::Fill)
+        .style(styles::sidebar);
+
+        //
+        // Conversation
+        //
+        let conversation = if let Some(chat_id) = self.current_chat_id {
+            if let Some(chat) = self.chats.iter().find(|c| c.id == chat_id) {
+                let messages: Vec<iced::Element<Message>> = chat
+                    .messages
+                    .iter()
+                    .map(|msg| {
+                        let text = container(text(msg.content.clone()).size(14))
+                            .padding(15)
+                            .style(styles::message);
+                        if !msg.is_reply {
+                            row![Space::new().width(Length::Fill), text]
+                                .align_y(Vertical::Center)
+                                .into()
+                        } else {
+                            row![text, Space::new().width(Length::Fill)]
+                                .align_y(Vertical::Center)
+                                .into()
+                        }
+                    })
+                    .collect();
+
+                container(scrollable(column(messages).spacing(10).padding(20)))
+            } else {
+                container(text("Select a chat"))
+                    .center_y(Length::Fill)
+                    .center_x(Length::Fill)
+            }
+        } else {
+            container(text("Select a chat or create a new one"))
+                .center_y(Length::Fill)
+                .center_x(Length::Fill)
+        };
+
+        let conversation = conversation.height(Length::FillPortion(4)).max_width(800);
+
+        //
+        // Input Field
+        //
+        //
+        let input_field = container(
+            row![
+                Space::new().width(Length::FillPortion(1)),
+                container(
+                    text_editor(&self.input)
+                        .on_action(Message::InputChange)
+                        .key_binding(|key_press| {
+                            let modifiers = key_press.modifiers;
+
+                            match text_editor::Binding::from_key_press(key_press) {
+                                Some(text_editor::Binding::Enter) if !modifiers.shift() => {
+                                    Some(text_editor::Binding::Custom(Message::SubmitMessage))
+                                }
+                                binding => binding,
+                            }
+                        })
+                )
+                .width(Length::FillPortion(2))
+                .height(200),
+                Space::new().width(Length::FillPortion(1))
+            ]
+            .align_y(Vertical::Center),
+        )
+        .height(Length::FillPortion(1));
+
+        //
+        // Messaging Area
+        //
+        let messaging_area =
+            container(column![conversation, input_field].align_x(Horizontal::Center))
+                .width(Length::Fill)
+                .style(styles::messaging_area);
+
+        //
+        // Main area
+        //
+        let main_area = container(row![sidebar, messaging_area]).height(Length::Fill);
+
+        let content = column![main_area];
+
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+}
+
+mod styles {
+    use iced::widget::{button, container};
+    use iced::{Border, Color, Theme, color};
+
+    pub fn sidebar(_theme: &Theme) -> container::Style {
+        container::Style {
+            text_color: Some(Color::BLACK),
+            background: Some(color!(0x113c25).into()),
+            border: Border {
+                color: color!(0x678366, 0.5),
+                width: 1.5,
+                ..Default::default()
+            },
+
+            ..Default::default()
+        }
+    }
+
+    pub fn messaging_area(_theme: &Theme) -> container::Style {
+        container::Style {
+            background: Some(color!(0x113c25).into()),
+            border: Border {
+                color: color!(0x27272a, 0.5),
+                width: 1.5,
+                ..Default::default()
+            },
+
+            ..Default::default()
+        }
+    }
+
+    pub fn message(_theme: &Theme) -> container::Style {
+        container::Style {
+            text_color: Some(color!(0x27272a).into()),
+            background: Some(color!(0x678366).into()),
+            border: Border {
+                radius: 20.0.into(),
+                color: color!(0x859f84, 0.5),
+                width: 1.5,
+                ..Default::default()
+            },
+
+            ..Default::default()
+        }
+    }
+
+    pub fn new_chat_button(_theme: &Theme, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Hovered => button::Style {
+                text_color: color!(0x27272a).into(),
+                ..Default::default()
+            },
+            _ => button::Style {
+                text_color: Color::WHITE,
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn delete_chat_button(_theme: &Theme, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Hovered => button::Style {
+                text_color: color!(0x27272a).into(),
+                ..Default::default()
+            },
+            _ => button::Style {
+                text_color: Color::WHITE,
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn open_chat_button(_theme: &Theme, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Hovered => button::Style {
+                text_color: Color::BLACK,
+                background: Some(color!(0x71717a).into()),
+                ..Default::default()
+            },
+            _ => button::Style {
+                text_color: Color::WHITE,
+                background: Some(color!(0x09090b).into()),
+                ..Default::default()
+            },
+        }
+    }
+}
