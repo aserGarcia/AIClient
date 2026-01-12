@@ -90,7 +90,7 @@ impl SecureClient {
                 };
                 self.current_chat_id = Some(idx);
                 self.chats.push(chat);
-                return Task::none();
+                return operation::focus::<Message>("input");
             }
             Message::OpenChat(id) => {
                 self.current_chat_id = Some(id);
