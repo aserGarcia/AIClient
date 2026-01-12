@@ -348,7 +348,7 @@ mod styles {
     pub fn message(_theme: &Theme) -> container::Style {
         container::Style {
             text_color: Some(color!(0xffffe3).into()),
-            background: Some(color!(0x080b05).into()),
+            background: Some(color!(0x111613).into()),
             border: Border {
                 radius: 20.0.into(),
                 color: color!(0x93b1a6, 0.5),
