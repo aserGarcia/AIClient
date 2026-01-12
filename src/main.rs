@@ -7,8 +7,8 @@ use iced::{Color, Element, Font, Length, Size, Task, window};
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 
 fn main() -> iced::Result {
-    iced::application(SecureClient::new, SecureClient::update, SecureClient::view)
-        .title(SecureClient::title)
+    iced::application(Convo::new, Convo::update, Convo::view)
+        .title(Convo::title)
         .window(window::Settings {
             size: Size {
                 width: 1500.0,
@@ -21,7 +21,7 @@ fn main() -> iced::Result {
 }
 
 // Drives the dynamic state of the GUI
-struct SecureClient {
+struct Convo {
     input: text_editor::Content,
     chats: Vec<Chat>,
     current_chat_id: Option<usize>,
@@ -48,7 +48,7 @@ struct ChatMessage {
     is_reply: bool,
 }
 
-impl Default for SecureClient {
+impl Default for Convo {
     fn default() -> Self {
         Self {
             input: text_editor::Content::new(),
@@ -58,7 +58,7 @@ impl Default for SecureClient {
     }
 }
 
-impl SecureClient {
+impl Convo {
     fn new() -> (Self, Task<Message>) {
         (
             Self {
@@ -71,7 +71,7 @@ impl SecureClient {
     }
 
     fn title(&self) -> String {
-        "SecureClient AI".to_string()
+        "Convo".to_string()
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
