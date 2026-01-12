@@ -224,7 +224,7 @@ impl SecureClient {
                     .center_x(Length::Fill)
             }
         } else {
-            container(text("Select a chat or create a new one").color(Color::WHITE))
+            container(text("Create a new chat, type and hit enter.").color(Color::WHITE))
                 .center_y(Length::Fill)
                 .center_x(Length::Fill)
         };
