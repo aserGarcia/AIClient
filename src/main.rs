@@ -246,7 +246,7 @@ impl SecureClient {
                 container(scrollable(column(messages).spacing(10).padding(20)).id("conversation"))
             } else {
                 container(
-                    text("Select a chat from the sidebar.")
+                    text("Select a conversation or begin a new one.")
                         .size(24)
                         .color(Color::WHITE),
                 )
