@@ -327,7 +327,7 @@ mod styles {
     pub fn sidebar(_theme: &Theme) -> container::Style {
         container::Style {
             text_color: Some(color!(0xffffe3).into()),
-            background: Some(color!(0x080b05).into()),
+            background: Some(color!(0x172b23).into()),
             border: Border {
                 ..Default::default()
             },
@@ -337,7 +337,7 @@ mod styles {
 
     pub fn messaging_area(_theme: &Theme) -> container::Style {
         container::Style {
-            background: Some(color!(0x050301).into()),
+            background: Some(color!(0x111613).into()),
             border: Border {
                 ..Default::default()
             },
