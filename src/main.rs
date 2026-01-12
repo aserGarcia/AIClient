@@ -1,25 +1,23 @@
 use iced::alignment::{Horizontal, Vertical};
-use iced::widget::{Space, button, column, container, row, scrollable, text, text_editor, tooltip};
+use iced::widget::{
+    Space, button, column, container, operation, row, scrollable, text, text_editor, tooltip,
+};
 use iced::{Color, Element, Font, Length, Size, Task, window};
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 
 fn main() -> iced::Result {
-    iced::application(
-        SecureClient::default,
-        SecureClient::update,
-        SecureClient::view,
-    )
-    .title(SecureClient::title)
-    .window(window::Settings {
-        size: Size {
-            width: 1500.0,
-            height: 1000.0,
-        },
-        ..Default::default()
-    })
-    .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
-    .run()
+    iced::application(SecureClient::new, SecureClient::update, SecureClient::view)
+        .title(SecureClient::title)
+        .window(window::Settings {
+            size: Size {
+                width: 1500.0,
+                height: 1000.0,
+            },
+            ..Default::default()
+        })
+        .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
+        .run()
 }
 
 // Drives the dynamic state of the GUI
@@ -31,6 +29,7 @@ struct SecureClient {
 
 #[derive(Clone)]
 enum Message {
+    Initialize,
     NewChat,
     OpenChat(usize),
     DeleteChat(usize),
@@ -60,23 +59,42 @@ impl Default for SecureClient {
 }
 
 impl SecureClient {
+    fn new() -> (Self, Task<Message>) {
+        (
+            Self {
+                input: text_editor::Content::new(),
+                chats: Vec::new(),
+                current_chat_id: None,
+            },
+            Task::done(Message::Initialize),
+        )
+    }
+
     fn title(&self) -> String {
         "SecureClient AI".to_string()
     }
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::Initialize => {
+                let focus_input = operation::focus::<Message>("input");
+                let scroll_to_recent = operation::snap_to_end::<Message>("conversation");
+                return Task::batch([focus_input, scroll_to_recent]);
+            }
             Message::NewChat => {
+                let idx = self.chats.len() + 1;
                 let chat = Chat {
-                    id: self.chats.len(),
-                    title: format!("Chat {}", self.chats.len() + 1),
+                    id: idx,
+                    title: format!("Chat {}", idx),
                     messages: Vec::new(),
                 };
-                self.current_chat_id = Some(chat.id);
+                self.current_chat_id = Some(idx);
                 self.chats.push(chat);
+                return Task::none();
             }
             Message::OpenChat(id) => {
                 self.current_chat_id = Some(id);
+                return Task::none();
             }
             Message::DeleteChat(id) => {
                 self.chats.retain(|chat| chat.id != id);
@@ -88,9 +106,11 @@ impl SecureClient {
                         None
                     };
                 }
+                return Task::none();
             }
             Message::InputChange(action) => {
                 self.input.perform(action);
+                return Task::none();
             }
             Message::SubmitMessage => {
                 if self.input.text().len() > 0 {
@@ -110,19 +130,20 @@ impl SecureClient {
                             self.chats[idx].messages.push(default_reply);
                         }
                     } else {
-                        self.current_chat_id = Some(self.chats.len());
+                        let idx = self.chats.len() + 1;
+                        self.current_chat_id = Some(idx);
                         self.chats.push(Chat {
-                            id: self.chats.len(),
-                            title: format!("Chat {}", self.chats.len()),
+                            id: idx,
+                            title: format!("Chat {}", idx),
                             messages: vec![message],
                         });
                     }
 
                     self.input = text_editor::Content::new();
                 }
+                return Task::none();
             }
-        }
-        Task::none()
+        };
     }
 
     fn view(&self) -> iced::Element<'_, Message> {
@@ -138,10 +159,15 @@ impl SecureClient {
             .chats
             .iter()
             .map(|chat| {
+                let mut chat_button =
+                    button(text(chat.title.clone()).size(13)).on_press(Message::OpenChat(chat.id));
+                if Some(chat.id) == self.current_chat_id {
+                    chat_button = chat_button.style(styles::chat_selected);
+                } else {
+                    chat_button = chat_button.style(styles::open_chat_button);
+                }
                 row![
-                    button(text(chat.title.clone()).size(13))
-                        .on_press(Message::OpenChat(chat.id))
-                        .style(styles::open_chat_button),
+                    chat_button,
                     Space::new().width(Length::Fill),
                     button(text("\u{F146}").font(CHAT_FONT).size(12))
                         .on_press(Message::DeleteChat(chat.id))
@@ -159,7 +185,7 @@ impl SecureClient {
 
         let settings = row![
             container(text("🟢").size(24)),
-            container(column![text("UserId").size(16), text("Plan").size(12)])
+            container(column![text("UserId").size(16)])
         ]
         .align_y(Vertical::Center)
         .spacing(10);
@@ -217,16 +243,24 @@ impl SecureClient {
                     })
                     .collect();
 
-                container(scrollable(column(messages).spacing(10).padding(20)))
+                container(scrollable(column(messages).spacing(10).padding(20)).id("conversation"))
             } else {
-                container(text("Select a chat").color(Color::WHITE))
-                    .center_y(Length::Fill)
-                    .center_x(Length::Fill)
-            }
-        } else {
-            container(text("Create a new chat, type and hit enter.").color(Color::WHITE))
+                container(
+                    text("Select a chat from the sidebar.")
+                        .size(24)
+                        .color(Color::WHITE),
+                )
                 .center_y(Length::Fill)
                 .center_x(Length::Fill)
+            }
+        } else {
+            container(
+                text("Type and hit enter to begin a conversation.")
+                    .size(24)
+                    .color(Color::WHITE),
+            )
+            .center_y(Length::Fill)
+            .center_x(Length::Fill)
         };
 
         let conversation = conversation.height(Length::FillPortion(6)).max_width(800);
@@ -237,6 +271,8 @@ impl SecureClient {
         //
         let text_editor_field = container(
             text_editor(&self.input)
+                .id("input")
+                .placeholder("Type something...")
                 .on_action(Message::InputChange)
                 .key_binding(|key_press| {
                     let modifiers = key_press.modifiers;
@@ -354,11 +390,42 @@ mod styles {
         match status {
             button::Status::Hovered => button::Style {
                 text_color: Color::BLACK,
+                border: Border {
+                    radius: 5.0.into(),
+                    ..Default::default()
+                },
                 background: Some(color!(0x93b1a6).into()),
                 ..Default::default()
             },
             _ => button::Style {
                 text_color: Color::WHITE,
+                border: Border {
+                    radius: 5.0.into(),
+                    ..Default::default()
+                },
+                background: Some(color!(0x080b05).into()),
+                ..Default::default()
+            },
+        }
+    }
+
+    pub fn chat_selected(_theme: &Theme, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Hovered | button::Status::Active => button::Style {
+                text_color: Color::BLACK,
+                border: Border {
+                    radius: 5.0.into(),
+                    ..Default::default()
+                },
+                background: Some(color!(0x93b1a6).into()),
+                ..Default::default()
+            },
+            _ => button::Style {
+                text_color: Color::WHITE,
+                border: Border {
+                    radius: 5.0.into(),
+                    ..Default::default()
+                },
                 background: Some(color!(0x080b05).into()),
                 ..Default::default()
             },
@@ -372,7 +439,7 @@ mod styles {
                 radius: 10.0.into(),
                 ..Default::default()
             },
-            placeholder: Color::WHITE.into(),
+            placeholder: color!(0x3c4a45).into(),
             value: Color::BLACK.into(),
             selection: Color::WHITE.into(),
         }
