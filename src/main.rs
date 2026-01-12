@@ -1,7 +1,6 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Space, button, column, container, row, scrollable, text, text_editor, tooltip};
-use iced::{Color, Element, Font};
-use iced::{Length, Task};
+use iced::{Color, Element, Font, Length, Size, Task, window};
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 
@@ -12,6 +11,13 @@ fn main() -> iced::Result {
         SecureClient::view,
     )
     .title(SecureClient::title)
+    .window(window::Settings {
+        size: Size {
+            width: 1500.0,
+            height: 1000.0,
+        },
+        ..Default::default()
+    })
     .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
     .run()
 }
@@ -76,26 +82,43 @@ impl SecureClient {
                 self.chats.retain(|chat| chat.id != id);
 
                 if self.current_chat_id == Some(id) {
-                    self.current_chat_id = None;
+                    self.current_chat_id = if self.chats.len() > 0 {
+                        Some(self.chats.len())
+                    } else {
+                        None
+                    };
                 }
             }
             Message::InputChange(action) => {
                 self.input.perform(action);
             }
             Message::SubmitMessage => {
-                if let Some(id) = self.current_chat_id {
+                if self.input.text().len() > 0 {
                     let message = ChatMessage {
                         content: self.input.text(),
                         is_reply: false,
                     };
-                    self.chats[id].messages.push(message);
-                    self.input = text_editor::Content::new();
 
                     let default_reply = ChatMessage {
                         content: "This is a default AI reply".to_string(),
                         is_reply: true,
                     };
-                    self.chats[id].messages.push(default_reply);
+
+                    if let Some(id) = self.current_chat_id {
+                        if let Some(idx) = self.chats.iter().position(|x| x.id == id) {
+                            self.chats[idx].messages.push(message);
+                            self.chats[idx].messages.push(default_reply);
+                        }
+                    } else {
+                        self.current_chat_id = Some(self.chats.len());
+                        self.chats.push(Chat {
+                            id: self.chats.len(),
+                            title: format!("Chat {}", self.chats.len()),
+                            messages: vec![message],
+                        });
+                    }
+
+                    self.input = text_editor::Content::new();
                 }
             }
         }
@@ -110,8 +133,6 @@ impl SecureClient {
         //
         // Recent Messages
         //
-        // TODO: Update per account
-        // TODO: Replace default example messages
 
         let chat_list: Vec<Element<Message>> = self
             .chats
