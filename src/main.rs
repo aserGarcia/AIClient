@@ -1,6 +1,6 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{Space, button, column, container, row, scrollable, text, text_editor, tooltip};
-use iced::{Element, Font};
+use iced::{Color, Element, Font};
 use iced::{Length, Task};
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
@@ -180,13 +180,14 @@ impl SecureClient {
                     .messages
                     .iter()
                     .map(|msg| {
-                        let text = container(text(msg.content.clone()).size(14))
-                            .padding(15)
-                            .style(styles::message);
+                        let text = container(text(msg.content.clone()).size(14)).padding(15);
                         if !msg.is_reply {
-                            row![Space::new().width(Length::Fill), text]
-                                .align_y(Vertical::Center)
-                                .into()
+                            row![
+                                Space::new().width(Length::Fill),
+                                text.style(styles::message)
+                            ]
+                            .align_y(Vertical::Center)
+                            .into()
                         } else {
                             row![text, Space::new().width(Length::Fill)]
                                 .align_y(Vertical::Center)
@@ -197,45 +198,47 @@ impl SecureClient {
 
                 container(scrollable(column(messages).spacing(10).padding(20)))
             } else {
-                container(text("Select a chat"))
+                container(text("Select a chat").color(Color::WHITE))
                     .center_y(Length::Fill)
                     .center_x(Length::Fill)
             }
         } else {
-            container(text("Select a chat or create a new one"))
+            container(text("Select a chat or create a new one").color(Color::WHITE))
                 .center_y(Length::Fill)
                 .center_x(Length::Fill)
         };
 
-        let conversation = conversation.height(Length::FillPortion(4)).max_width(800);
+        let conversation = conversation.height(Length::FillPortion(6)).max_width(800);
 
         //
         // Input Field
         //
         //
-        let input_field = container(
-            row![
-                Space::new().width(Length::FillPortion(1)),
-                container(
-                    text_editor(&self.input)
-                        .on_action(Message::InputChange)
-                        .key_binding(|key_press| {
-                            let modifiers = key_press.modifiers;
+        let text_editor_field = container(
+            text_editor(&self.input)
+                .on_action(Message::InputChange)
+                .key_binding(|key_press| {
+                    let modifiers = key_press.modifiers;
 
-                            match text_editor::Binding::from_key_press(key_press) {
-                                Some(text_editor::Binding::Enter) if !modifiers.shift() => {
-                                    Some(text_editor::Binding::Custom(Message::SubmitMessage))
-                                }
-                                binding => binding,
-                            }
-                        })
-                )
-                .width(Length::FillPortion(2))
-                .height(200),
-                Space::new().width(Length::FillPortion(1))
-            ]
-            .align_y(Vertical::Center),
+                    match text_editor::Binding::from_key_press(key_press) {
+                        Some(text_editor::Binding::Enter) if !modifiers.shift() => {
+                            Some(text_editor::Binding::Custom(Message::SubmitMessage))
+                        }
+                        binding => binding,
+                    }
+                })
+                .style(styles::text_editor_field),
         )
+        .padding(20)
+        .align_y(Vertical::Center)
+        .width(Length::FillPortion(2))
+        .height(400);
+
+        let input_field = container(row![
+            Space::new().width(Length::FillPortion(1)),
+            text_editor_field,
+            Space::new().width(Length::FillPortion(1))
+        ])
         .height(Length::FillPortion(1));
 
         //
@@ -261,43 +264,37 @@ impl SecureClient {
 }
 
 mod styles {
-    use iced::widget::{button, container};
+    use iced::widget::{button, container, text_editor};
     use iced::{Border, Color, Theme, color};
 
     pub fn sidebar(_theme: &Theme) -> container::Style {
         container::Style {
-            text_color: Some(Color::BLACK),
-            background: Some(color!(0x113c25).into()),
+            text_color: Some(color!(0xffffe3).into()),
+            background: Some(color!(0x080b05).into()),
             border: Border {
-                color: color!(0x678366, 0.5),
-                width: 1.5,
                 ..Default::default()
             },
-
             ..Default::default()
         }
     }
 
     pub fn messaging_area(_theme: &Theme) -> container::Style {
         container::Style {
-            background: Some(color!(0x113c25).into()),
+            background: Some(color!(0x050301).into()),
             border: Border {
-                color: color!(0x27272a, 0.5),
-                width: 1.5,
                 ..Default::default()
             },
-
             ..Default::default()
         }
     }
 
     pub fn message(_theme: &Theme) -> container::Style {
         container::Style {
-            text_color: Some(color!(0x27272a).into()),
-            background: Some(color!(0x678366).into()),
+            text_color: Some(color!(0xffffe3).into()),
+            background: Some(color!(0x080b05).into()),
             border: Border {
                 radius: 20.0.into(),
-                color: color!(0x859f84, 0.5),
+                color: color!(0x93b1a6, 0.5),
                 width: 1.5,
                 ..Default::default()
             },
@@ -309,7 +306,7 @@ mod styles {
     pub fn new_chat_button(_theme: &Theme, status: button::Status) -> button::Style {
         match status {
             button::Status::Hovered => button::Style {
-                text_color: color!(0x27272a).into(),
+                text_color: color!(0x93b1a6).into(),
                 ..Default::default()
             },
             _ => button::Style {
@@ -322,7 +319,7 @@ mod styles {
     pub fn delete_chat_button(_theme: &Theme, status: button::Status) -> button::Style {
         match status {
             button::Status::Hovered => button::Style {
-                text_color: color!(0x27272a).into(),
+                text_color: color!(0x93b1a6).into(),
                 ..Default::default()
             },
             _ => button::Style {
@@ -336,14 +333,27 @@ mod styles {
         match status {
             button::Status::Hovered => button::Style {
                 text_color: Color::BLACK,
-                background: Some(color!(0x71717a).into()),
+                background: Some(color!(0x93b1a6).into()),
                 ..Default::default()
             },
             _ => button::Style {
                 text_color: Color::WHITE,
-                background: Some(color!(0x09090b).into()),
+                background: Some(color!(0x080b05).into()),
                 ..Default::default()
             },
+        }
+    }
+
+    pub fn text_editor_field(_theme: &Theme, status: text_editor::Status) -> text_editor::Style {
+        text_editor::Style {
+            background: color!(0x93B1A6).into(),
+            border: Border {
+                radius: 10.0.into(),
+                ..Default::default()
+            },
+            placeholder: Color::WHITE.into(),
+            value: Color::BLACK.into(),
+            selection: Color::WHITE.into(),
         }
     }
 }
