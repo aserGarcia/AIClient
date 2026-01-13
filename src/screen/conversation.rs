@@ -133,6 +133,7 @@ impl Conversation {
         let chat_list: Vec<Element<Message>> = self
             .chats
             .iter()
+            .rev()
             .map(|chat| {
                 let mut chat_button =
                     button(text(chat.title.clone()).size(13)).on_press(Message::OpenChat(chat.id));
