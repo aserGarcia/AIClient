@@ -493,6 +493,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "convo"
+version = "0.1.0"
+dependencies = [
+ "iced",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2380,13 +2387,6 @@ dependencies = [
  "memmap2",
  "smithay-client-toolkit 0.19.2",
  "tiny-skia",
-]
-
-[[package]]
-name = "secureclient"
-version = "0.1.0"
-dependencies = [
- "iced",
 ]
 
 [[package]]
