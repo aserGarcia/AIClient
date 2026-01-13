@@ -2,7 +2,8 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{
     Space, button, column, container, operation, row, scrollable, text, text_editor, tooltip,
 };
-use iced::{Color, Element, Font, Length, Task};
+use iced::{Border, Color, Element, Font, Length, Task, Theme, color};
+use iced_dialog::dialog;
 
 use crate::styles::styles;
 
@@ -11,6 +12,8 @@ const CHAT_FONT: Font = Font::with_name("chat-icons");
 pub struct Conversation {
     input: text_editor::Content,
     chats: Vec<Chat>,
+    dialog_delete_chat_open: bool,
+    dialog_delete_chat: Option<usize>,
     current_chat_id: Option<usize>,
 }
 
@@ -19,7 +22,9 @@ pub enum Message {
     Initialize,
     NewChat,
     OpenChat(usize),
-    DeleteChat(usize),
+    DeleteChat(Option<usize>),
+    DialogDeleteChat(usize),
+    DialogCancelDeleteChat,
     InputChange(text_editor::Action),
     SubmitMessage,
 }
@@ -46,6 +51,8 @@ impl Conversation {
             Self {
                 input: text_editor::Content::new(),
                 chats: Vec::new(),
+                dialog_delete_chat_open: false,
+                dialog_delete_chat: None,
                 current_chat_id: None,
             },
             Task::done(Message::Initialize),
@@ -75,15 +82,28 @@ impl Conversation {
                 return Action::None;
             }
             Message::DeleteChat(id) => {
-                self.chats.retain(|chat| chat.id != id);
+                if let Some(id) = id {
+                    self.chats.retain(|chat| chat.id != id);
 
-                if self.current_chat_id == Some(id) {
-                    self.current_chat_id = if self.chats.len() > 0 {
-                        Some(self.chats.len())
-                    } else {
-                        None
-                    };
+                    if self.current_chat_id == Some(id) {
+                        self.current_chat_id = if self.chats.len() > 0 {
+                            Some(self.chats.len())
+                        } else {
+                            None
+                        };
+                    }
+                    return Action::Run(Task::done(Message::DialogCancelDeleteChat));
                 }
+                return Action::None;
+            }
+            Message::DialogDeleteChat(id) => {
+                self.dialog_delete_chat_open = true;
+                self.dialog_delete_chat = Some(id);
+                return Action::None;
+            }
+            Message::DialogCancelDeleteChat => {
+                self.dialog_delete_chat_open = false;
+                self.dialog_delete_chat = None;
                 return Action::None;
             }
             Message::InputChange(action) => {
@@ -135,6 +155,9 @@ impl Conversation {
             .iter()
             .rev()
             .map(|chat| {
+                let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(12))
+                    .on_press(Message::DialogDeleteChat(chat.id))
+                    .style(styles::delete_chat_button);
                 let mut chat_button =
                     button(text(chat.title.clone()).size(13)).on_press(Message::OpenChat(chat.id));
                 if Some(chat.id) == self.current_chat_id {
@@ -145,9 +168,7 @@ impl Conversation {
                 row![
                     chat_button,
                     Space::new().width(Length::Fill),
-                    button(text("\u{F146}").font(CHAT_FONT).size(12))
-                        .on_press(Message::DeleteChat(chat.id))
-                        .style(styles::delete_chat_button)
+                    delete_chat_button
                 ]
                 .align_y(Vertical::Center)
                 .into()
@@ -289,9 +310,23 @@ impl Conversation {
 
         let content = column![main_area];
 
-        container(content)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        let base = container(content).width(Length::Fill).height(Length::Fill);
+
+        dialog(
+            self.dialog_delete_chat_open,
+            base,
+            text("Would you like to delete the conversation?"),
+        )
+        .title("Delete Chat")
+        .push_button(
+            iced_dialog::button("Delete", Message::DeleteChat(self.dialog_delete_chat))
+                .style(styles::chat_selected),
+        )
+        .push_button(
+            iced_dialog::button("Cancel", Message::DialogCancelDeleteChat)
+                .style(styles::chat_selected),
+        )
+        .on_press(Message::DialogCancelDeleteChat)
+        .into()
     }
 }

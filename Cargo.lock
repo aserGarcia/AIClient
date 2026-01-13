@@ -497,6 +497,7 @@ name = "convo"
 version = "0.1.0"
 dependencies = [
  "iced",
+ "iced_dialog",
 ]
 
 [[package]]
@@ -1176,6 +1177,16 @@ dependencies = [
  "iced_core",
  "iced_futures",
  "log",
+]
+
+[[package]]
+name = "iced_dialog"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ac1ce8766cca5304019c4af79352c3fadc5b8ed37b8b614657c33f2146acc35"
+dependencies = [
+ "iced_core",
+ "iced_widget",
 ]
 
 [[package]]
