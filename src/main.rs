@@ -1,6 +1,6 @@
 use convo::screen::{Screen, conversation};
-
-use iced::{Size, Task, window};
+use iced::{Size, Subscription, Task, time, window};
+use std::time::Duration;
 
 fn main() -> iced::Result {
     iced::application(Convo::new, Convo::update, Convo::view)
@@ -13,6 +13,7 @@ fn main() -> iced::Result {
             ..Default::default()
         })
         .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
+        .subscription(Convo::subscription)
         .run()
 }
 
@@ -67,5 +68,10 @@ impl Convo {
         match &self.screen {
             Screen::Conversation(conversation) => conversation.view().map(Message::Conversation),
         }
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        time::every(Duration::from_secs(2))
+            .map(|_| Message::Conversation(conversation::Message::AutoSave))
     }
 }

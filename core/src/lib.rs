@@ -1,1 +1,2 @@
-mod directories;
+pub mod db;
+mod directory;

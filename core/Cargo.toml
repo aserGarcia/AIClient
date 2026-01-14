@@ -4,4 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-directories = "5.0" 
+directories = "6.0.0" 
+rusqlite = { version = "0.38.0", features = ["bundled"] }

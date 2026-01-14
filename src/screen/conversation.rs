@@ -5,6 +5,10 @@ use iced::widget::{
 use iced::{Border, Color, Element, Font, Length, Task, Theme, color};
 use iced_dialog::dialog;
 
+use convo_core::db;
+use rusqlite::{Connection, params};
+use std::sync::{Arc, Mutex};
+
 use crate::styles::styles;
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
@@ -12,6 +16,7 @@ const CHAT_FONT: Font = Font::with_name("chat-icons");
 pub struct Conversation {
     input: text_editor::Content,
     chats: Vec<Chat>,
+    db: db::Database,
     dialog_delete_chat_open: bool,
     dialog_delete_chat: Option<usize>,
     current_chat_id: Option<usize>,
@@ -28,6 +33,7 @@ pub enum Message {
     DialogCancelDeleteChat,
     InputChange(text_editor::Action),
     SubmitMessage,
+    AutoSave,
 }
 
 pub enum Action {
@@ -42,22 +48,128 @@ struct Chat {
 }
 
 struct ChatMessage {
+    id: usize,
+    chat_id: usize,
     content: String,
     is_reply: bool,
 }
 
 impl Conversation {
     pub fn new() -> (Self, Task<Message>) {
+        // handle error more gracefully
+        let db = db::Database::new().expect("Failed to init database");
+        println!("db loaded");
+        let chats = Self::load_chats(&db.conn);
+        println!("chats loaded {}", chats.len());
         (
             Self {
                 input: text_editor::Content::new(),
-                chats: Vec::new(),
+                chats: chats,
+                db: db,
                 dialog_delete_chat_open: false,
                 dialog_delete_chat: None,
                 current_chat_id: None,
             },
             Task::done(Message::Initialize),
         )
+    }
+
+    fn load_chats(conn: &Arc<Mutex<Connection>>) -> Vec<Chat> {
+        let binding = conn.lock().unwrap();
+        let mut statement = match binding.prepare("SELECT id, title FROM chats ORDER BY id") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to prep load_chats: {}", e);
+                return Vec::new();
+            }
+        };
+
+        // TODO: Handle error more gracefully
+        let chats = match statement.query_map([], |row| {
+            let chat_id: i64 = row.get(0)?;
+            let title: String = row.get(1)?;
+            let messages = Self::load_messages(&binding, chat_id);
+            println!("Retrieved {} messages for chat {}", messages.len(), chat_id);
+            Ok(Chat {
+                id: chat_id as usize,
+                title,
+                messages,
+            })
+        }) {
+            Ok(c) => c,
+            Err(e) => {
+                return Vec::new();
+            }
+        };
+
+        // TODO: Dumps the error chats?
+        chats.filter_map(|c| c.ok()).collect()
+    }
+
+    fn load_messages(conn: &Connection, chat_id: i64) -> Vec<ChatMessage> {
+        let mut statement = match conn.prepare(
+            "SELECT id, chat_id, content, is_reply FROM messages where chat_id = ? ORDER BY id",
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to prep load_messages: {}", e);
+                return Vec::new();
+            }
+        };
+
+        let messages = match statement.query_map([chat_id], |row| {
+            let id: i64 = row.get(0)?;
+            let chat_id: i64 = row.get(1)?;
+            Ok(ChatMessage {
+                id: id as usize,
+                chat_id: chat_id as usize,
+                content: row.get(2)?,
+                is_reply: row.get(3)?,
+            })
+        }) {
+            Ok(c) => c,
+            Err(_) => return Vec::new(),
+        };
+
+        // TODO: Drops the error chats?
+        messages.filter_map(|c| c.ok()).collect()
+    }
+
+    fn save_chat(&self, chat: &Chat) -> Result<(), rusqlite::Error> {
+        // TODO: Handle error case from lock
+        let db = self.db.conn.lock().unwrap();
+
+        println!(
+            "Saving chat {} with {} messages",
+            chat.id,
+            chat.messages.len()
+        );
+        db.execute(
+            "INSERT OR REPLACE INTO chats (id, title) VALUES (?1, ?2)",
+            params![chat.id as i64, chat.title],
+        )?;
+        println!("Chat saved");
+
+        for msg in &chat.messages {
+            db.execute(
+                "INSERT OR REPLACE INTO messages (id, chat_id, content, is_reply) 
+             VALUES (?1, ?2, ?3, ?4)",
+                params![msg.id as i64, msg.chat_id as i64, msg.content, msg.is_reply,],
+            )?;
+            println!("Message saved")
+        }
+        println!("All messages saved for chat {}", chat.id);
+        Ok(())
+    }
+
+    fn delete_chat(&self, chat_id: usize) -> Result<(), rusqlite::Error> {
+        let db = self.db.conn.lock().unwrap();
+        db.execute(
+            "DELETE FROM messages WHERE chat_id = ?",
+            params![chat_id as i64],
+        );
+        db.execute("DELETE FROM chats WHERE id = ?", params![chat_id as i64])?;
+        Ok(())
     }
 
     pub fn update(&mut self, message: Message) -> Action {
@@ -78,6 +190,10 @@ impl Conversation {
                     messages: Vec::new(),
                 };
                 self.current_chat_id = Some(idx);
+
+                if let Err(e) = self.save_chat(&chat) {
+                    eprintln!("Failed to save new chat: {}", e);
+                }
                 self.chats.push(chat);
                 return Action::Run(Task::done(Message::FocusInput));
             }
@@ -87,6 +203,7 @@ impl Conversation {
             }
             Message::DeleteChat(id) => {
                 if let Some(id) = id {
+                    let _ = self.delete_chat(id);
                     self.chats.retain(|chat| chat.id != id);
 
                     if self.current_chat_id == Some(id) {
@@ -118,33 +235,57 @@ impl Conversation {
                 return Action::None;
             }
             Message::SubmitMessage => {
-                if self.input.text().len() > 0 {
-                    let message = ChatMessage {
-                        content: self.input.text(),
-                        is_reply: false,
-                    };
-
-                    let default_reply = ChatMessage {
-                        content: "This is a default AI reply".to_string(),
-                        is_reply: true,
-                    };
-
+                if !self.input.text().trim().is_empty() {
                     if let Some(id) = self.current_chat_id {
                         if let Some(idx) = self.chats.iter().position(|x| x.id == id) {
+                            let msg_id = self.chats[idx].messages.len() + 1;
+                            let message = ChatMessage {
+                                id: msg_id,
+                                chat_id: id,
+                                content: self.input.text(),
+                                is_reply: false,
+                            };
+
+                            let default_reply = ChatMessage {
+                                id: msg_id + 1,
+                                chat_id: id,
+                                content: "This is a default AI reply".to_string(),
+                                is_reply: true,
+                            };
                             self.chats[idx].messages.push(message);
                             self.chats[idx].messages.push(default_reply);
                         }
                     } else {
-                        let idx = self.chats.len() + 1;
-                        self.current_chat_id = Some(idx);
+                        let id = self.chats.len() + 1;
+                        self.current_chat_id = Some(id);
+                        let message = ChatMessage {
+                            id: 0,
+                            chat_id: id,
+                            content: self.input.text(),
+                            is_reply: false,
+                        };
                         self.chats.push(Chat {
-                            id: idx,
-                            title: format!("Chat {}", idx),
+                            id: id,
+                            title: format!("Chat {}", id),
                             messages: vec![message],
                         });
                     }
 
+                    self.db.needs_save = true;
                     self.input = text_editor::Content::new();
+                }
+                return Action::None;
+            }
+            Message::AutoSave => {
+                if self.db.needs_save {
+                    for chat in &self.chats {
+                        println!("processing chat {}", chat.id);
+                        if let Err(e) = self.save_chat(chat) {
+                            eprintln!("Failed to auto-save chat: {}", e);
+                        }
+                    }
+                    self.db.needs_save = false;
+                    println!("Autosave complete")
                 }
                 return Action::None;
             }
@@ -162,11 +303,12 @@ impl Conversation {
             .iter()
             .rev()
             .map(|chat| {
+                // TODO: integer conversion from i64 to usize is a bad idea
                 let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(12))
-                    .on_press(Message::DialogDeleteChat(chat.id))
+                    .on_press(Message::DialogDeleteChat(chat.id as usize))
                     .style(styles::delete_chat_button);
-                let mut chat_button =
-                    button(text(chat.title.clone()).size(13)).on_press(Message::OpenChat(chat.id));
+                let mut chat_button = button(text(chat.title.clone()).size(13))
+                    .on_press(Message::OpenChat(chat.id as usize));
                 if Some(chat.id) == self.current_chat_id {
                     chat_button = chat_button.style(styles::chat_selected);
                 } else {
