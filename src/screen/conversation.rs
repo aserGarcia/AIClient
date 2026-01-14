@@ -20,6 +20,7 @@ pub struct Conversation {
 #[derive(Clone)]
 pub enum Message {
     Initialize,
+    FocusInput,
     NewChat,
     OpenChat(usize),
     DeleteChat(Option<usize>),
@@ -62,6 +63,9 @@ impl Conversation {
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::Initialize => {
+                return Action::Run(Task::batch([Task::done(Message::FocusInput)]));
+            }
+            Message::FocusInput => {
                 let focus_input = operation::focus::<Message>("input");
                 let scroll_to_recent = operation::snap_to_end::<Message>("conversation");
                 return Action::Run(Task::batch([focus_input, scroll_to_recent]));
@@ -75,11 +79,11 @@ impl Conversation {
                 };
                 self.current_chat_id = Some(idx);
                 self.chats.push(chat);
-                return Action::Run(operation::focus::<Message>("input"));
+                return Action::Run(Task::done(Message::FocusInput));
             }
             Message::OpenChat(id) => {
                 self.current_chat_id = Some(id);
-                return Action::None;
+                return Action::Run(Task::done(Message::FocusInput));
             }
             Message::DeleteChat(id) => {
                 if let Some(id) = id {
@@ -92,19 +96,22 @@ impl Conversation {
                             None
                         };
                     }
-                    return Action::Run(Task::done(Message::DialogCancelDeleteChat));
+                    return Action::Run(Task::batch([
+                        Task::done(Message::FocusInput),
+                        Task::done(Message::DialogCancelDeleteChat),
+                    ]));
                 }
                 return Action::None;
             }
             Message::DialogDeleteChat(id) => {
                 self.dialog_delete_chat_open = true;
                 self.dialog_delete_chat = Some(id);
-                return Action::None;
+                return Action::Run(Task::done(Message::FocusInput));
             }
             Message::DialogCancelDeleteChat => {
                 self.dialog_delete_chat_open = false;
                 self.dialog_delete_chat = None;
-                return Action::None;
+                return Action::Run(Task::done(Message::FocusInput));
             }
             Message::InputChange(action) => {
                 self.input.perform(action);
