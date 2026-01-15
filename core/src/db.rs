@@ -5,6 +5,7 @@ use crate::{
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 pub struct Database {
@@ -58,47 +59,53 @@ impl Database {
         Ok(dir.join("convo.db"))
     }
 
-    pub fn load_chats(&self) -> Vec<Chat> {
+    pub fn load_chats(&self) -> Result<Vec<Chat>, rusqlite::Error> {
         let binding = self.conn.lock().unwrap();
         let mut statement = match binding.prepare("SELECT id, title FROM chats") {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Failed to prep load_chats: {}", e);
-                return Vec::new();
+                error!("Failed to prep load_chats: {}", e.to_string());
+                return Err(e);
             }
         };
 
-        // TODO: Handle error more gracefully
         let chats = match statement.query_map([], |row| {
             let chat_id: Uuid = Uuid::from_bytes(row.get(0)?);
-            let title: String = row.get(1)?;
             let messages = Self::load_messages(&binding, &chat_id);
-            println!("Retrieved {} messages for chat {}", messages.len(), chat_id);
-            Ok(Chat {
-                id: chat_id,
-                title,
-                messages,
-            })
+
+            match messages {
+                Ok(m) => {
+                    info!("Retrieved {} messages for chat {}", m.len(), chat_id);
+                    Ok(Chat {
+                        id: chat_id,
+                        title: row.get(1)?,
+                        messages: m,
+                    })
+                }
+                Err(e) => Err(e),
+            }
         }) {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Error laoding chat: {}", e);
-                return Vec::new();
+                error!("Error laoding chats: {}", e);
+                return Err(e);
             }
         };
 
-        // TODO: Dumps the error chats?
-        chats.filter_map(|c| c.ok()).collect()
+        Ok(chats.filter_map(|c| c.ok()).collect())
     }
 
-    fn load_messages(conn: &Connection, chat_id: &Uuid) -> Vec<ChatMessage> {
+    fn load_messages(
+        conn: &Connection,
+        chat_id: &Uuid,
+    ) -> Result<Vec<ChatMessage>, rusqlite::Error> {
         let mut statement = match conn.prepare(
             "SELECT id, chat_id, content, is_reply FROM messages where chat_id = ? ORDER BY id",
         ) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Failed to prep load_messages: {}", e);
-                return Vec::new();
+                error!("Failed to prep load_messages: {}", e);
+                return Err(e);
             }
         };
 
@@ -112,18 +119,30 @@ impl Database {
             })
         }) {
             Ok(c) => c,
-            Err(_) => return Vec::new(),
+            Err(e) => {
+                error!(
+                    "Error loading chat messages for chat {}",
+                    chat_id.to_string()
+                );
+                return Err(e);
+            }
         };
 
-        // TODO: Drops the error chats?
-        messages.filter_map(|c| c.ok()).collect()
+        Ok(messages.filter_map(|c| c.ok()).collect())
     }
 
     pub fn save_chat(&self, chat: &Chat) -> Result<(), rusqlite::Error> {
-        // TODO: Handle error case from lock
-        let db = self.conn.lock().unwrap();
+        let db = match self.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!("Could not lock connection");
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "Lock on connection failed".into(),
+                ));
+            }
+        };
 
-        println!(
+        info!(
             "Saving chat {} with {} messages",
             chat.id,
             chat.messages.len()
@@ -132,7 +151,7 @@ impl Database {
             "INSERT OR REPLACE INTO chats (id, title) VALUES (?1, ?2)",
             params![*chat.id.as_bytes(), chat.title],
         )?;
-        println!("Chat saved");
+        info!("Chat {} saved", chat.id);
 
         for msg in &chat.messages {
             db.execute(
@@ -145,25 +164,37 @@ impl Database {
                     msg.is_reply,
                 ],
             )?;
-            println!("Message saved")
+            debug!("Message saved")
         }
-        println!("All messages saved for chat {}", chat.id);
+        debug!("All messages saved for chat {}", chat.id);
         Ok(())
     }
 
     pub fn delete_chat(&self, chat_id: &Uuid) -> Result<(), rusqlite::Error> {
-        let db = self.conn.lock().unwrap();
+        let db = match self.conn.lock() {
+            Ok(conn) => conn,
+            Err(e) => {
+                error!("Could not lock connection");
+                return Err(rusqlite::Error::InvalidParameterName(
+                    "Lock on connection failed".into(),
+                ));
+            }
+        };
         if let Err(e) = db.execute(
             "DELETE FROM messages WHERE chat_id = ?",
             params![*chat_id.as_bytes()],
         ) {
-            eprintln!("Error deleting messages from chat {}: {}", chat_id, e);
+            error!("Error deleting messages from chat {}: {}", chat_id, e);
+            return Err(e);
         };
 
-        db.execute(
+        if let Err(e) = db.execute(
             "DELETE FROM chats WHERE id = ?",
             params![*chat_id.as_bytes()],
-        )?;
+        ) {
+            error!("Error deleting chat {}", chat_id.to_string());
+            return Err(e);
+        };
         Ok(())
     }
 }

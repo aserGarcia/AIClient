@@ -5,13 +5,16 @@ use iced::widget::{
 use iced::{Color, Element, Font, Length, Task};
 use iced_dialog::dialog;
 
+use thiserror::Error;
+use uuid::Uuid;
+
+use tracing::{debug, error, info};
+
+use crate::styles::styles;
 use convo_core::{
     chat::{Chat, ChatMessage},
     db,
 };
-
-use crate::styles::styles;
-use uuid::Uuid;
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 
@@ -43,14 +46,23 @@ pub enum Action {
     Run(Task<Message>),
 }
 
+#[derive(Error, Debug)]
+pub enum ConversationError {
+    #[error("Failed to load conversations: {0}")]
+    Loading(String),
+}
+
 impl Conversation {
-    pub fn new() -> (Self, Task<Message>) {
+    pub fn new() -> Result<(Self, Task<Message>), ConversationError> {
         // handle error more gracefully
-        let db = db::Database::new().expect("Failed to init database");
-        println!("db loaded");
-        let chats = db.load_chats();
-        println!("chats loaded {}", chats.len());
-        (
+        let db = db::Database::new().map_err(|e| ConversationError::Loading(e.to_string()))?;
+        debug!("db loaded");
+
+        let chats = db
+            .load_chats()
+            .map_err(|e| ConversationError::Loading(e.to_string()))?;
+        debug!("chats loaded {}", chats.len());
+        Ok((
             Self {
                 input: text_editor::Content::new(),
                 chats: chats,
@@ -60,7 +72,7 @@ impl Conversation {
                 current_chat_id: None,
             },
             Task::done(Message::Initialize),
-        )
+        ))
     }
 
     pub fn update(&mut self, message: Message) -> Action {
@@ -83,7 +95,8 @@ impl Conversation {
                 self.current_chat_id = Some(uuid);
 
                 if let Err(e) = self.db.save_chat(&chat) {
-                    eprintln!("Failed to save new chat: {}", e);
+                    error!("Failed to save new chat: {}", e);
+                    return Action::None;
                 }
                 self.chats.push(chat);
                 return Action::Run(Task::done(Message::FocusInput));
@@ -94,7 +107,10 @@ impl Conversation {
             }
             Message::DeleteChat(id) => {
                 if let Some(id) = id {
-                    let _ = self.db.delete_chat(&id);
+                    if let Err(e) = self.db.delete_chat(&id) {
+                        error!("Failed to delete chat");
+                        return Action::None;
+                    }
                     self.chats.retain(|chat| chat.id != id);
 
                     self.current_chat_id = None;
@@ -164,9 +180,9 @@ impl Conversation {
             Message::AutoSave => {
                 if self.db.needs_save {
                     for chat in &self.chats {
-                        println!("processing chat {}", chat.id);
+                        debug!("processing chat {}", chat.id);
                         if let Err(e) = self.db.save_chat(chat) {
-                            eprintln!("Failed to auto-save chat: {}", e);
+                            error!("Failed to auto-save chat: {}", e);
                         }
                     }
                     self.db.needs_save = false;
@@ -188,7 +204,6 @@ impl Conversation {
             .iter()
             .rev()
             .map(|chat| {
-                // TODO: integer conversion from i64 to usize is a bad idea
                 let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(12))
                     .on_press(Message::DialogDeleteChat(chat.id))
                     .style(styles::delete_chat_button);

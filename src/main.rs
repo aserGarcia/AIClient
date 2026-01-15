@@ -1,8 +1,10 @@
 use convo::screen::{Screen, conversation};
 use iced::{Size, Subscription, Task, time, window};
 use std::time::Duration;
+use tracing_subscriber::{filter, fmt};
 
 fn main() -> iced::Result {
+    fmt::init();
     iced::application(Convo::new, Convo::update, Convo::view)
         .title(Convo::title)
         .window(window::Settings {
@@ -29,13 +31,16 @@ enum Message {
 
 impl Convo {
     fn new() -> (Self, Task<Message>) {
-        let (conversation, task) = conversation::Conversation::new();
-        (
-            Self {
-                screen: Screen::Conversation(conversation),
-            },
-            task.map(Message::Conversation),
-        )
+        if let Ok((conversation, task)) = conversation::Conversation::new() {
+            (
+                Self {
+                    screen: Screen::Conversation(conversation),
+                },
+                task.map(Message::Conversation),
+            )
+        } else {
+            panic!("Could not load conversation.")
+        }
     }
 
     fn title(&self) -> String {
