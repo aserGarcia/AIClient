@@ -8,7 +8,7 @@ use iced_dialog::dialog;
 use thiserror::Error;
 use uuid::Uuid;
 
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use crate::styles::styles;
 use convo_core::{
@@ -108,7 +108,7 @@ impl Conversation {
             Message::DeleteChat(id) => {
                 if let Some(id) = id {
                     if let Err(e) = self.db.delete_chat(&id) {
-                        error!("Failed to delete chat");
+                        error!("Failed to delete chat {}", e.to_string());
                         return Action::None;
                     }
                     self.chats.retain(|chat| chat.id != id);

@@ -1,7 +1,7 @@
 use convo::screen::{Screen, conversation};
 use iced::{Size, Subscription, Task, time, window};
 use std::time::Duration;
-use tracing_subscriber::{filter, fmt};
+use tracing_subscriber::fmt;
 
 fn main() -> iced::Result {
     fmt::init();

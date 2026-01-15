@@ -136,9 +136,7 @@ impl Database {
             Ok(conn) => conn,
             Err(e) => {
                 error!("Could not lock connection");
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "Lock on connection failed".into(),
-                ));
+                return Err(rusqlite::Error::InvalidParameterName(e.to_string()));
             }
         };
 
@@ -175,9 +173,7 @@ impl Database {
             Ok(conn) => conn,
             Err(e) => {
                 error!("Could not lock connection");
-                return Err(rusqlite::Error::InvalidParameterName(
-                    "Lock on connection failed".into(),
-                ));
+                return Err(rusqlite::Error::InvalidParameterName(e.to_string()));
             }
         };
         if let Err(e) = db.execute(
