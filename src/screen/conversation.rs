@@ -2,12 +2,13 @@ use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{
     Space, button, column, container, operation, row, scrollable, text, text_editor, tooltip,
 };
-use iced::{Border, Color, Element, Font, Length, Task, Theme, color};
+use iced::{Color, Element, Font, Length, Task};
 use iced_dialog::dialog;
 
-use convo_core::db;
-use rusqlite::{Connection, params};
-use std::sync::{Arc, Mutex};
+use convo_core::{
+    chat::{Chat, ChatMessage},
+    db,
+};
 
 use crate::styles::styles;
 
@@ -41,25 +42,12 @@ pub enum Action {
     Run(Task<Message>),
 }
 
-struct Chat {
-    id: usize,
-    title: String,
-    messages: Vec<ChatMessage>,
-}
-
-struct ChatMessage {
-    id: usize,
-    chat_id: usize,
-    content: String,
-    is_reply: bool,
-}
-
 impl Conversation {
     pub fn new() -> (Self, Task<Message>) {
         // handle error more gracefully
         let db = db::Database::new().expect("Failed to init database");
         println!("db loaded");
-        let chats = Self::load_chats(&db.conn);
+        let chats = db.load_chats();
         println!("chats loaded {}", chats.len());
         (
             Self {
@@ -72,104 +60,6 @@ impl Conversation {
             },
             Task::done(Message::Initialize),
         )
-    }
-
-    fn load_chats(conn: &Arc<Mutex<Connection>>) -> Vec<Chat> {
-        let binding = conn.lock().unwrap();
-        let mut statement = match binding.prepare("SELECT id, title FROM chats ORDER BY id") {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to prep load_chats: {}", e);
-                return Vec::new();
-            }
-        };
-
-        // TODO: Handle error more gracefully
-        let chats = match statement.query_map([], |row| {
-            let chat_id: i64 = row.get(0)?;
-            let title: String = row.get(1)?;
-            let messages = Self::load_messages(&binding, chat_id);
-            println!("Retrieved {} messages for chat {}", messages.len(), chat_id);
-            Ok(Chat {
-                id: chat_id as usize,
-                title,
-                messages,
-            })
-        }) {
-            Ok(c) => c,
-            Err(e) => {
-                return Vec::new();
-            }
-        };
-
-        // TODO: Dumps the error chats?
-        chats.filter_map(|c| c.ok()).collect()
-    }
-
-    fn load_messages(conn: &Connection, chat_id: i64) -> Vec<ChatMessage> {
-        let mut statement = match conn.prepare(
-            "SELECT id, chat_id, content, is_reply FROM messages where chat_id = ? ORDER BY id",
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to prep load_messages: {}", e);
-                return Vec::new();
-            }
-        };
-
-        let messages = match statement.query_map([chat_id], |row| {
-            let id: i64 = row.get(0)?;
-            let chat_id: i64 = row.get(1)?;
-            Ok(ChatMessage {
-                id: id as usize,
-                chat_id: chat_id as usize,
-                content: row.get(2)?,
-                is_reply: row.get(3)?,
-            })
-        }) {
-            Ok(c) => c,
-            Err(_) => return Vec::new(),
-        };
-
-        // TODO: Drops the error chats?
-        messages.filter_map(|c| c.ok()).collect()
-    }
-
-    fn save_chat(&self, chat: &Chat) -> Result<(), rusqlite::Error> {
-        // TODO: Handle error case from lock
-        let db = self.db.conn.lock().unwrap();
-
-        println!(
-            "Saving chat {} with {} messages",
-            chat.id,
-            chat.messages.len()
-        );
-        db.execute(
-            "INSERT OR REPLACE INTO chats (id, title) VALUES (?1, ?2)",
-            params![chat.id as i64, chat.title],
-        )?;
-        println!("Chat saved");
-
-        for msg in &chat.messages {
-            db.execute(
-                "INSERT OR REPLACE INTO messages (id, chat_id, content, is_reply) 
-             VALUES (?1, ?2, ?3, ?4)",
-                params![msg.id as i64, msg.chat_id as i64, msg.content, msg.is_reply,],
-            )?;
-            println!("Message saved")
-        }
-        println!("All messages saved for chat {}", chat.id);
-        Ok(())
-    }
-
-    fn delete_chat(&self, chat_id: usize) -> Result<(), rusqlite::Error> {
-        let db = self.db.conn.lock().unwrap();
-        db.execute(
-            "DELETE FROM messages WHERE chat_id = ?",
-            params![chat_id as i64],
-        );
-        db.execute("DELETE FROM chats WHERE id = ?", params![chat_id as i64])?;
-        Ok(())
     }
 
     pub fn update(&mut self, message: Message) -> Action {
@@ -191,7 +81,7 @@ impl Conversation {
                 };
                 self.current_chat_id = Some(idx);
 
-                if let Err(e) = self.save_chat(&chat) {
+                if let Err(e) = self.db.save_chat(&chat) {
                     eprintln!("Failed to save new chat: {}", e);
                 }
                 self.chats.push(chat);
@@ -203,7 +93,7 @@ impl Conversation {
             }
             Message::DeleteChat(id) => {
                 if let Some(id) = id {
-                    let _ = self.delete_chat(id);
+                    let _ = self.db.delete_chat(id);
                     self.chats.retain(|chat| chat.id != id);
 
                     if self.current_chat_id == Some(id) {
@@ -280,7 +170,7 @@ impl Conversation {
                 if self.db.needs_save {
                     for chat in &self.chats {
                         println!("processing chat {}", chat.id);
-                        if let Err(e) = self.save_chat(chat) {
+                        if let Err(e) = self.db.save_chat(chat) {
                             eprintln!("Failed to auto-save chat: {}", e);
                         }
                     }
