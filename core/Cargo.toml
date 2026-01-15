@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 directories = "6.0.0" 
 rusqlite = { version = "0.38.0", features = ["bundled"] }
+uuid = "1.19.0"

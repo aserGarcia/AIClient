@@ -11,6 +11,7 @@ use convo_core::{
 };
 
 use crate::styles::styles;
+use uuid::Uuid;
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 
@@ -19,8 +20,8 @@ pub struct Conversation {
     chats: Vec<Chat>,
     db: db::Database,
     dialog_delete_chat_open: bool,
-    dialog_delete_chat: Option<usize>,
-    current_chat_id: Option<usize>,
+    dialog_delete_chat: Option<Uuid>,
+    current_chat_id: Option<Uuid>,
 }
 
 #[derive(Clone)]
@@ -28,9 +29,9 @@ pub enum Message {
     Initialize,
     FocusInput,
     NewChat,
-    OpenChat(usize),
-    DeleteChat(Option<usize>),
-    DialogDeleteChat(usize),
+    OpenChat(Uuid),
+    DeleteChat(Option<Uuid>),
+    DialogDeleteChat(Uuid),
     DialogCancelDeleteChat,
     InputChange(text_editor::Action),
     SubmitMessage,
@@ -73,13 +74,13 @@ impl Conversation {
                 return Action::Run(Task::batch([focus_input, scroll_to_recent]));
             }
             Message::NewChat => {
-                let idx = self.chats.len() + 1;
+                let uuid = Uuid::new_v4();
                 let chat = Chat {
-                    id: idx,
-                    title: format!("Chat {}", idx),
+                    id: uuid,
+                    title: format!("Chat {:.8}", uuid.to_string()),
                     messages: Vec::new(),
                 };
-                self.current_chat_id = Some(idx);
+                self.current_chat_id = Some(uuid);
 
                 if let Err(e) = self.db.save_chat(&chat) {
                     eprintln!("Failed to save new chat: {}", e);
@@ -93,16 +94,10 @@ impl Conversation {
             }
             Message::DeleteChat(id) => {
                 if let Some(id) = id {
-                    let _ = self.db.delete_chat(id);
+                    let _ = self.db.delete_chat(&id);
                     self.chats.retain(|chat| chat.id != id);
 
-                    if self.current_chat_id == Some(id) {
-                        self.current_chat_id = if self.chats.len() > 0 {
-                            Some(self.chats.len())
-                        } else {
-                            None
-                        };
-                    }
+                    self.current_chat_id = None;
                     return Action::Run(Task::batch([
                         Task::done(Message::FocusInput),
                         Task::done(Message::DialogCancelDeleteChat),
@@ -146,7 +141,7 @@ impl Conversation {
                             self.chats[idx].messages.push(default_reply);
                         }
                     } else {
-                        let id = self.chats.len() + 1;
+                        let id = Uuid::new_v4();
                         self.current_chat_id = Some(id);
                         let message = ChatMessage {
                             id: 0,
@@ -156,7 +151,7 @@ impl Conversation {
                         };
                         self.chats.push(Chat {
                             id: id,
-                            title: format!("Chat {}", id),
+                            title: format!("Chat {:.8}", id.to_string()),
                             messages: vec![message],
                         });
                     }
@@ -195,10 +190,10 @@ impl Conversation {
             .map(|chat| {
                 // TODO: integer conversion from i64 to usize is a bad idea
                 let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(12))
-                    .on_press(Message::DialogDeleteChat(chat.id as usize))
+                    .on_press(Message::DialogDeleteChat(chat.id))
                     .style(styles::delete_chat_button);
-                let mut chat_button = button(text(chat.title.clone()).size(13))
-                    .on_press(Message::OpenChat(chat.id as usize));
+                let mut chat_button =
+                    button(text(chat.title.clone()).size(13)).on_press(Message::OpenChat(chat.id));
                 if Some(chat.id) == self.current_chat_id {
                     chat_button = chat_button.style(styles::chat_selected);
                 } else {
