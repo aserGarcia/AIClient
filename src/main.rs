@@ -15,6 +15,8 @@ fn main() -> iced::Result {
             ..Default::default()
         })
         .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
+        .font(include_bytes!("../fonts/AveriaSerifLibre-Regular.ttf").as_slice())
+        .font(include_bytes!("../fonts/OpenSans-VariableFont_wdth,wght.ttf").as_slice())
         .subscription(Convo::subscription)
         .run()
 }

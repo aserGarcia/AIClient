@@ -17,6 +17,8 @@ use convo_core::{
 };
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
+const AVERIA_SERIF_LIBRE: Font = Font::with_name("Averia Serif Libre");
+const OPEN_SANS: Font = Font::with_name("Open Sans");
 
 pub struct Conversation {
     input: text_editor::Content,
@@ -204,11 +206,11 @@ impl Conversation {
             .iter()
             .rev()
             .map(|chat| {
-                let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(12))
+                let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(16))
                     .on_press(Message::DialogDeleteChat(chat.id))
                     .style(styles::delete_chat_button);
-                let mut chat_button =
-                    button(text(chat.title.clone()).size(13)).on_press(Message::OpenChat(chat.id));
+                let mut chat_button = button(text(chat.title.clone()).font(OPEN_SANS).size(16))
+                    .on_press(Message::OpenChat(chat.id));
                 if Some(chat.id) == self.current_chat_id {
                     chat_button = chat_button.style(styles::chat_selected);
                 } else {
@@ -241,17 +243,17 @@ impl Conversation {
         // New chat button
         //
         let new_chat = tooltip(
-            button(text('\u{F0FE}').font(CHAT_FONT).size(12))
+            button(text('\u{F0FE}').font(CHAT_FONT).size(16))
                 .on_press(Message::NewChat)
                 .style(styles::new_chat_button),
-            text("New chat").size(12),
+            text("New chat").font(OPEN_SANS).size(16),
             tooltip::Position::Right,
         );
 
         let sidebar = container(
             column![
                 row![
-                    text("Recent conversations").size(12),
+                    text("Convo").font(AVERIA_SERIF_LIBRE).size(24),
                     Space::new().width(Length::Fill),
                     new_chat
                 ]
@@ -273,7 +275,8 @@ impl Conversation {
                     .messages
                     .iter()
                     .map(|msg| {
-                        let text = container(text(msg.content.clone()).size(14)).padding(15);
+                        let text = container(text(msg.content.clone()).font(OPEN_SANS).size(16))
+                            .padding(10);
                         if !msg.is_reply {
                             row![
                                 Space::new().width(Length::Fill),
@@ -293,6 +296,7 @@ impl Conversation {
             } else {
                 container(
                     text("Select a conversation or begin a new one.")
+                        .font(OPEN_SANS)
                         .size(24)
                         .color(Color::WHITE),
                 )
@@ -302,6 +306,7 @@ impl Conversation {
         } else {
             container(
                 text("Type and hit enter to begin a conversation.")
+                    .font(OPEN_SANS)
                     .size(24)
                     .color(Color::WHITE),
             )
@@ -316,25 +321,31 @@ impl Conversation {
         //
         //
         let text_editor_field = container(
-            text_editor(&self.input)
-                .id("input")
-                .placeholder("Type something...")
-                .on_action(Message::InputChange)
-                .key_binding(|key_press| {
-                    let modifiers = key_press.modifiers;
+            container(
+                text_editor(&self.input)
+                    .id("input")
+                    .placeholder("Type something...")
+                    .size(16)
+                    .on_action(Message::InputChange)
+                    .key_binding(|key_press| {
+                        let modifiers = key_press.modifiers;
 
-                    match text_editor::Binding::from_key_press(key_press) {
-                        Some(text_editor::Binding::Enter) if !modifiers.shift() => {
-                            Some(text_editor::Binding::Custom(Message::SubmitMessage))
+                        match text_editor::Binding::from_key_press(key_press) {
+                            Some(text_editor::Binding::Enter) if !modifiers.shift() => {
+                                Some(text_editor::Binding::Custom(Message::SubmitMessage))
+                            }
+                            binding => binding,
                         }
-                        binding => binding,
-                    }
-                })
-                .style(styles::text_editor_field),
+                    })
+                    .style(styles::text_editor_field),
+            )
+            .align_y(Vertical::Top)
+            .style(styles::message)
+            .padding(6),
         )
         .padding(20)
-        .align_y(Vertical::Center)
-        .width(Length::FillPortion(2))
+        .align_y(Vertical::Top)
+        .width(Length::FillPortion(3))
         .height(400);
 
         let input_field = container(row![
@@ -347,10 +358,16 @@ impl Conversation {
         //
         // Messaging Area
         //
-        let messaging_area =
-            container(column![conversation, input_field].align_x(Horizontal::Center))
-                .width(Length::Fill)
-                .style(styles::messaging_area);
+        let messaging_area = container(
+            column![
+                Space::new().width(Length::Fill).height(100),
+                conversation,
+                input_field
+            ]
+            .align_x(Horizontal::Center),
+        )
+        .width(Length::Fill)
+        .style(styles::messaging_area);
 
         //
         // Main area
