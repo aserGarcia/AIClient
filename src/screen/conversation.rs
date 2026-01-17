@@ -226,10 +226,7 @@ impl Conversation {
             })
             .collect();
 
-        let chat_messages = column(chat_list)
-            .spacing(10)
-            .padding(10)
-            .height(Length::Fill);
+        let chat_messages = column(chat_list).spacing(10).height(Length::Fill);
 
         let recent_messages = container(column![chat_messages]);
 
