@@ -231,13 +231,7 @@ impl Conversation {
             .padding(10)
             .height(Length::Fill);
 
-        let settings = row![
-            container(text("🟢").size(24)),
-            container(column![text("UserId").size(16)])
-        ]
-        .align_y(Vertical::Center)
-        .spacing(10);
-        let recent_messages = container(column![chat_messages, settings]);
+        let recent_messages = container(column![chat_messages]);
 
         //
         // New chat button
@@ -360,7 +354,7 @@ impl Conversation {
         //
         let messaging_area = container(
             column![
-                Space::new().width(Length::Fill).height(100),
+                Space::new().width(Length::Fill).height(60),
                 conversation,
                 input_field
             ]

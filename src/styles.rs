@@ -53,7 +53,7 @@ pub mod styles {
     pub fn delete_chat_button(_theme: &Theme, status: button::Status) -> button::Style {
         match status {
             button::Status::Hovered => button::Style {
-                text_color: color!(0x6F3AB2).into(),
+                text_color: color!(0x000000).into(),
                 ..Default::default()
             },
             _ => button::Style {
