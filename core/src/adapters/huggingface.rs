@@ -1,43 +1,48 @@
-use hf_hub::{Repo, RepoType, api::tokio::{ApiBuilder, ApiRepo, ApiError}};
+use hf_hub::api::tokio::{ApiBuilder, ApiError, ApiRepo, Progress};
+use std::path::PathBuf;
 
-#[drive(Clone)]
+#[derive(Clone)]
 pub struct DownloadProgress {
-    current: usize,
-    total: usize
+    pub current: usize,
+    pub total: usize,
 }
 
 impl Progress for DownloadProgress {
-    async pub fn init(&mut self, size: usize, _filename: &str) {
+    async fn init(&mut self, size: usize, _filename: &str) {
         self.total = size;
         self.current = 0;
     }
 
-    async pub fn update(&mut self, size: usize) {
+    async fn update(&mut self, size: usize) {
         self.current = size;
     }
 
-    async pub fn finish(&mut self) {
+    async fn finish(&mut self) {
         println!("Done downloading");
     }
 }
 
 #[derive(Debug)]
-struct HFAdapter {
+pub struct HFAdapter {
     pub api: ApiRepo,
-    pub model: String 
+    pub model: String,
 }
 
 impl HFAdapter {
-    pub fn new(model_path: String) -> Self {
-        let repo = ApiBuilder::new()
-            .with_progress(true)
-            .build();
-        let api = api.model(model_path);
-        Self {api, model_path}
+    pub fn new(model_path: String) -> Result<Self, ApiError> {
+        let repo = ApiBuilder::new().with_progress(true).build()?;
+        let api = repo.model(model_path.clone());
+        Ok(Self {
+            api: api,
+            model: model_path,
+        })
     }
 
-    pub fn download(filename: &str) -> Result<PathBuf, ApiError> {
-        let progress = DonwloadProgress{current: 0, total: 0};
+    pub async fn download(
+        &self,
+        filename: &str,
+        progress: DownloadProgress,
+    ) -> Result<PathBuf, ApiError> {
         let filename = self.api.download_with_progress(filename, progress).await?;
         Ok(filename)
     }
