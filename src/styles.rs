@@ -71,16 +71,16 @@ pub mod styles {
                     radius: 4.0.into(),
                     ..Default::default()
                 },
-                background: Some(color!(0xDBDBDB).into()),
+                background: Some(color!(0xF2F4F7).into()),
                 ..Default::default()
             },
             _ => button::Style {
-                text_color: Color::WHITE,
+                text_color: color!(0xF2F4F7),
                 border: Border {
                     radius: 4.0.into(),
                     ..Default::default()
                 },
-                background: Some(color!(0x2D2D2D).into()),
+                background: Some(color!(0x101F22).into()),
                 ..Default::default()
             },
         }
