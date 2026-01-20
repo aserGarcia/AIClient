@@ -7,5 +7,5 @@ pub use loading::Loading;
 pub enum Screen {
     Conversation(Conversation),
     Loading(Loading),
-    Error
+    Error(String)
 }

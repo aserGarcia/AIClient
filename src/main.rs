@@ -84,10 +84,14 @@ impl Convo {
                             self.screen = Screen::Conversation(conversation);
                             return task.map(Message::Conversation)
                         } else {
-                            self.screen = Screen::Error;
+                            self.screen = Screen::Error("Error creating conversation struct".to_string());
                             return Task::done(Message::Error)
                         }
-                        
+
+                    }
+                    loading::Action::Error(e) => {
+                            self.screen = Screen::Error(e);
+                            return Task::done(Message::Error)
                     }
                 }
             }
@@ -118,7 +122,7 @@ impl Convo {
         match &self.screen {
             Screen::Loading(loading) => loading.view().map(Message::Loading),
             Screen::Conversation(conversation) => conversation.view().map(Message::Conversation),
-            Screen::Error => text("Error").size(64).into()
+            Screen::Error(e) => text(format!("Error: {}", e)).size(64).into()
         }
     }
 
