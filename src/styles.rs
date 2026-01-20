@@ -4,8 +4,8 @@ pub mod styles {
 
     pub fn sidebar(_theme: &Theme) -> container::Style {
         container::Style {
-            text_color: Some(color!(0xDBDBDB).into()),
-            background: Some(color!(0x2D2D2D).into()),
+            text_color: Some(color!(0xF2F4F7).into()),
+            background: Some(color!(0x03070A).into()),
             border: Border {
                 ..Default::default()
             },
@@ -15,7 +15,7 @@ pub mod styles {
 
     pub fn messaging_area(_theme: &Theme) -> container::Style {
         container::Style {
-            background: Some(color!(0x242424).into()),
+            background: Some(color!(0x03070A).into()),
             border: Border {
                 ..Default::default()
             },
@@ -25,11 +25,11 @@ pub mod styles {
 
     pub fn message(_theme: &Theme) -> container::Style {
         container::Style {
-            text_color: Some(color!(0x000000).into()),
-            background: Some(color!(0xDBDBDB).into()),
+            text_color: Some(color!(0xF2F4F7).into()),
+            background: Some(color!(0x101F22).into()),
             border: Border {
                 radius: 4.0.into(),
-                color: color!(0xDBDBDB, 0.5),
+                color: color!(0x101F22, 0.5),
                 ..Default::default()
             },
 
@@ -89,21 +89,21 @@ pub mod styles {
     pub fn chat_selected(_theme: &Theme, status: button::Status) -> button::Style {
         match status {
             button::Status::Hovered | button::Status::Active => button::Style {
-                text_color: Color::BLACK,
+                text_color: color!(0xCD9043),
                 border: Border {
                     radius: 4.0.into(),
                     ..Default::default()
                 },
-                background: Some(color!(0xDBDBDB).into()),
+                background: Some(color!(0x343328).into()),
                 ..Default::default()
             },
             _ => button::Style {
-                text_color: Color::WHITE,
+                text_color: color!(0xF2F4F7),
                 border: Border {
                     radius: 4.0.into(),
                     ..Default::default()
                 },
-                background: Some(color!(0x2D2D2D).into()),
+                background: Some(color!(0x101F22).into()),
                 ..Default::default()
             },
         }
@@ -111,7 +111,7 @@ pub mod styles {
 
     pub fn text_editor_field(_theme: &Theme, _status: text_editor::Status) -> text_editor::Style {
         text_editor::Style {
-            background: color!(0xDBDBDB).into(),
+            background: color!(0xF2F4F7).into(),
             border: Border {
                 radius: 10.0.into(),
                 ..Default::default()
