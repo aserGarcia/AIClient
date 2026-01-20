@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use convo_core::directory;
 
-const AVERIA_SERIF_LIBRE: Font = Font::with_name("Averia Serif Libre");
+const MOOLI_FONT: Font = Font::with_name("Mooli");
 const DOWNLOAD_URL: &str = "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf";
 
 pub struct Loading {
@@ -123,16 +123,17 @@ impl Loading {
     pub fn view(&self) -> iced::Element<'_, Message> {
         container(
             column![
-                container(text("Convo").font(AVERIA_SERIF_LIBRE).size(64)),
+                container(text("Convo").font(MOOLI_FONT).size(64)),
                 row![
                     Space::new().width(Length::FillPortion(1)),
                     progress_bar(0.0..=1.0, self.progress)
                     .style(|_theme: &Theme| progress_bar::Style {
-                        background: Background::Color(color!(0xDBDBDB)),
-                        bar: Background::Color(color!(0x0c0c0c)),
+                        background: Background::Color(color!(0x101F22)),
+                        bar: Background::Color(color!(0xF2F4F7)),
                         border: Border {
+                            color: color!(0x06AB78),
                             radius: 10.0.into(),
-                            ..Default::default()
+                            width: 1.0.into()
                         }
                     })
                     .length(Length::FillPortion(2))
@@ -148,7 +149,7 @@ impl Loading {
         .align_x(Horizontal::Center)
         .align_y(Vertical::Center)
         .style(|_theme: &Theme| container::Style {
-            background: Some(color!(0x242424).into()),
+            background: Some(color!(0x03070A).into()),
             ..Default::default()
         })
         .into()
