@@ -4,11 +4,10 @@ use iced::{Background, Border, Font, Length, Task, Theme, color};
 use iced::task::{sipper, Sipper};
 use futures::StreamExt;
 use std::path::PathBuf;
-use std::time::Duration;
 use convo_core::directory;
 use tracing::{debug, error};
 
-const MOOLI_FONT: Font = Font::with_name("Mooli");
+const MOOLI: Font = Font::with_name("Mooli");
 const DOWNLOAD_URL: &str = "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf";
 
 pub struct Loading {
@@ -107,7 +106,7 @@ impl Loading {
     pub fn view(&self) -> iced::Element<'_, Message> {
         container(
             column![
-                container(text("Convo").font(MOOLI_FONT).size(64)),
+                container(text("Convo").font(MOOLI).size(64)),
                 row![
                     Space::new().width(Length::FillPortion(1)),
                     progress_bar(0.0..=1.0, self.progress.get_progress())
@@ -155,34 +154,55 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
         
         let cache_dir = directory::cache();
         let download_dir = cache_dir.join("downloads");
-        std::fs::create_dir_all(&download_dir)
-            .map_err(|e| Message::DownloadUpdate(
+        match std::fs::create_dir_all(&download_dir) {
+            Ok(()) => {},
+            Err(e) => {
+                let msg = Message::DownloadUpdate(
                     DownloadUpdate::Error(format!("Failed to create directory: {}", e))
-                    ));
+                    );
+                let _ = sender.send(msg.clone()).await;
+                return msg
+            }
+        }
         
         let file_name = url.split('/').last().unwrap_or("download.bin");
         let file_path = download_dir.join(file_name);
 
         if !file_path.exists() {
             let mut file = match std::fs::File::create(&file_path) {
-            Ok(f) => f,
-            Err(e) => return Message::DownloadUpdate(
-                    DownloadUpdate::Error(format!("Failed to create file: {}", e))),
+                Ok(f) => f,
+                Err(e) => {
+                    let msg = Message::DownloadUpdate(
+                        DownloadUpdate::Error(format!("Failed to create file: {}", e))
+                        );
+                    let _ = sender.send(msg.clone()).await;
+                    return msg
+                }            
             };
             
             while let Some(chunk) = stream.next().await {
                 let chunk = match chunk {
                     Ok(c) => c,
-                    Err(e) => return Message::DownloadUpdate(
-                        DownloadUpdate::Error(format!("Download error: {}", e))
-                        ),
+                    Err(e) => {
+                        let msg = Message::DownloadUpdate(
+                            DownloadUpdate::Error(format!("Download Error: {}", e))
+                            );
+                        let _ = sender.send(msg.clone()).await;
+                        return msg
+                    }
                 };
                 
-                std::io::Write::write_all(&mut file, &chunk)
-                    .map_err(|e| Message::DownloadUpdate(
-                            DownloadUpdate::Error(format!("Failed to write to file: {}", e))
-                    ));
-                
+                match std::io::Write::write_all(&mut file, &chunk) {
+                    Ok(()) => {},
+                    Err(e) => {
+                        let msg = Message::DownloadUpdate(
+                            DownloadUpdate::Error(format!("Download Error: {}", e))
+                            );
+                        let _ = sender.send(msg.clone()).await;
+                        return msg
+                    }
+                }
+                                    
                 downloaded += chunk.len() as u64;
                 let message = Message::DownloadUpdate(DownloadUpdate::Progress(DownloadProgress {
                     downloaded,

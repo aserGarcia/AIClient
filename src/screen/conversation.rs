@@ -17,8 +17,8 @@ use convo_core::{
 };
 
 const CHAT_FONT: Font = Font::with_name("chat-icons");
-const AVERIA_SERIF_LIBRE: Font = Font::with_name("Averia Serif Libre");
-const OPEN_SANS: Font = Font::with_name("Open Sans");
+const MOOLI: Font = Font::with_name("Mooli");
+const NOTO_SANS: Font = Font::with_name("Noto Sans");
 
 pub struct Conversation {
     input: text_editor::Content,
@@ -209,7 +209,7 @@ impl Conversation {
                 let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(16))
                     .on_press(Message::DialogDeleteChat(chat.id))
                     .style(styles::delete_chat_button);
-                let mut chat_button = button(text(chat.title.clone()).font(OPEN_SANS).size(16))
+                let mut chat_button = button(text(chat.title.clone()).font(NOTO_SANS).size(16))
                     .on_press(Message::OpenChat(chat.id));
                 if Some(chat.id) == self.current_chat_id {
                     chat_button = chat_button.style(styles::chat_selected);
@@ -237,14 +237,14 @@ impl Conversation {
             button(text('\u{F0FE}').font(CHAT_FONT).size(16))
                 .on_press(Message::NewChat)
                 .style(styles::new_chat_button),
-            text("New chat").font(OPEN_SANS).size(16),
+            text("New chat").font(NOTO_SANS).size(16),
             tooltip::Position::Right,
         );
 
         let sidebar = container(
             column![
                 row![
-                    text("Convo").font(AVERIA_SERIF_LIBRE).size(24),
+                    text("Convo").font(MOOLI).size(24),
                     Space::new().width(Length::Fill),
                     new_chat
                 ]
@@ -266,7 +266,7 @@ impl Conversation {
                     .messages
                     .iter()
                     .map(|msg| {
-                        let text = container(text(msg.content.clone()).font(OPEN_SANS).size(16))
+                        let text = container(text(msg.content.clone()).font(NOTO_SANS).size(16))
                             .padding(10);
                         if !msg.is_reply {
                             row![
@@ -287,7 +287,7 @@ impl Conversation {
             } else {
                 container(
                     text("Select a conversation or begin a new one.")
-                        .font(OPEN_SANS)
+                        .font(NOTO_SANS)
                         .size(24)
                         .color(Color::WHITE),
                 )
@@ -297,7 +297,7 @@ impl Conversation {
         } else {
             container(
                 text("Type and hit enter to begin a conversation.")
-                    .font(OPEN_SANS)
+                    .font(NOTO_SANS)
                     .size(24)
                     .color(Color::WHITE),
             )
@@ -372,7 +372,7 @@ impl Conversation {
         dialog(
             self.dialog_delete_chat_open,
             base,
-            text("Would you like to delete the conversation?"),
+            text("Would you like to delete the conversation?").font(NOTO_SANS).size(16),
         )
         .title("Delete Chat")
         .push_button(

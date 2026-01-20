@@ -1,18 +1,8 @@
 use convo::screen::{Screen, conversation, loading};
-use convo_core::directory;
 use iced::{Size, Subscription, Task, time, window};
+use iced::widget::text;
 use std::time::Duration;
 use tracing_subscriber::fmt;
-
-const DEFUALT_REPO: &'static str = "Qwen/Qwen3-4B-GGUF";
-const DEFAULT_MODEL: &'static str = "Qwen3-4B-Q5_K_M.gguf";
-
-use std::path::PathBuf;
-
-use iced::widget::{button, column, container, progress_bar, text};
-use iced::{Element, Length};
-use iced::task::{sipper, Sipper};
-use futures::StreamExt;
 
 fn main() -> iced::Result {
 
@@ -28,8 +18,7 @@ fn main() -> iced::Result {
         })
         .font(include_bytes!("../fonts/chat-icons.ttf").as_slice())
         .font(include_bytes!("../fonts/Mooli-Regular.ttf").as_slice())
-        .font(include_bytes!("../fonts/AveriaSerifLibre-Regular.ttf").as_slice())
-        .font(include_bytes!("../fonts/OpenSans-VariableFont_wdth,wght.ttf").as_slice())
+        .font(include_bytes!("../fonts/NotoSans-Regular.ttf").as_slice())
         .subscription(Convo::subscription)
         .run()
 }
@@ -47,16 +36,13 @@ enum Message {
 
 impl Convo {
     fn new() -> (Self, Task<Message>) {
-        if let (loading, task) = loading::Loading::new() {
-            (
-                Self {
-                    screen: Screen::Loading(loading),
-                },
-                task.map(Message::Loading),
-            )
-        } else {
-            panic!("Could not load conversation.")
-        }
+        let (loading, task) = loading::Loading::new();
+        (
+            Self {
+                screen: Screen::Loading(loading),
+            },
+            task.map(Message::Loading),
+        )
     }
 
     fn title(&self) -> String {
