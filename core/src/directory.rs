@@ -8,5 +8,9 @@ pub fn config() -> &'static Path {
         .unwrap_or(Path::new("./config"))
 }
 
+pub fn cache() -> &'static Path {
+    PROJECT.as_ref().map(directories::ProjectDirs::cache_dir).unwrap_or(Path::new("./cache"))
+}
+
 static PROJECT: LazyLock<Option<directories::ProjectDirs>> =
     LazyLock::new(|| directories::ProjectDirs::from("rs.convo", "", "convo"));

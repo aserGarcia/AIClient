@@ -14,7 +14,8 @@ impl Progress for DownloadProgress {
     }
 
     async fn update(&mut self, size: usize) {
-        self.current = size;
+        self.current += size;
+        println!("Current: {}", self.current/self.total);
     }
 
     async fn finish(&mut self) {
