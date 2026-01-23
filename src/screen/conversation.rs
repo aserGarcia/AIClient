@@ -1,8 +1,8 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::widget::{
-    Space, button, column, container, operation, row, scrollable, text, text_editor, tooltip,
+    Space, button, column, container, operation, row, scrollable, text, text_editor,
 };
-use iced::{Color, Element, Font, Length, Task};
+use iced::{Element, Font, Length, Task};
 use iced_dialog::dialog;
 
 use thiserror::Error;
@@ -92,6 +92,7 @@ impl Conversation {
                 let chat = Chat {
                     id: uuid,
                     title: format!("Chat {:.8}", uuid.to_string()),
+                    minor_text: String::new(),
                     messages: Vec::new(),
                 };
                 self.current_chat_id = Some(uuid);
@@ -170,6 +171,7 @@ impl Conversation {
                         self.chats.push(Chat {
                             id: id,
                             title: format!("Chat {:.8}", id.to_string()),
+                            minor_text: format!("{:.15}...", self.input.text()),
                             messages: vec![message],
                         });
                     }
@@ -206,54 +208,77 @@ impl Conversation {
             .iter()
             .rev()
             .map(|chat| {
-                let delete_chat_button = button(text("\u{F146}").font(CHAT_FONT).size(16))
-                    .on_press(Message::DialogDeleteChat(chat.id))
-                    .style(styles::delete_chat_button);
-                let mut chat_button = button(text(chat.title.clone()).font(NOTO_SANS).size(16))
-                    .on_press(Message::OpenChat(chat.id));
-                if Some(chat.id) == self.current_chat_id {
-                    chat_button = chat_button.style(styles::chat_selected);
+                let delete_chat_button = button(
+                    text("\u{F146}")
+                        .color(styles::text_color())
+                        .font(CHAT_FONT)
+                        .size(16),
+                )
+                .on_press(Message::DialogDeleteChat(chat.id))
+                .style(styles::delete_chat_button);
+
+                let mut chat_button = button(container(column![
+                    text(chat.title.clone()).font(NOTO_SANS).size(16),
+                    text(chat.minor_text.clone()).font(NOTO_SANS).size(12)
+                ]))
+                .on_press(Message::OpenChat(chat.id));
+
+                chat_button = if Some(chat.id) == self.current_chat_id {
+                    chat_button.style(styles::chat_selected)
                 } else {
-                    chat_button = chat_button.style(styles::open_chat_button);
-                }
-                row![
-                    chat_button,
-                    Space::new().width(Length::Fill),
-                    delete_chat_button
-                ]
-                .align_y(Vertical::Center)
-                .into()
+                    chat_button.style(styles::open_chat_button)
+                };
+
+                let mut chat_container = container(
+                    row![
+                        chat_button,
+                        Space::new().width(Length::Fill),
+                        delete_chat_button
+                    ]
+                    .align_y(Vertical::Center),
+                )
+                .padding(5);
+
+                chat_container = if Some(chat.id) == self.current_chat_id {
+                    chat_container.style(styles::chat_container_selected)
+                } else {
+                    chat_container.style(styles::chat_container_default)
+                };
+                chat_container.into()
             })
             .collect();
 
-        let chat_messages = column(chat_list).spacing(10).height(Length::Fill);
+        let chat_messages = column(chat_list).height(Length::Fill);
 
         let recent_messages = container(column![chat_messages]);
 
         //
         // New chat button
         //
-        let new_chat = tooltip(
-            button(text('\u{F0FE}').font(CHAT_FONT).size(16))
-                .on_press(Message::NewChat)
-                .style(styles::new_chat_button),
-            text("New chat").font(NOTO_SANS).size(16),
-            tooltip::Position::Right,
-        );
+        let new_chat = button(
+            text('\u{F0FE}')
+                .font(CHAT_FONT)
+                .size(16)
+                .color(styles::primary_color()),
+        )
+        .on_press(Message::NewChat)
+        .style(styles::new_chat_button);
 
-        let sidebar = container(
-            column![
+        let sidebar = container(column![
+            container(
                 row![
                     text("Convo").font(MOOLI).size(24),
                     Space::new().width(Length::Fill),
                     new_chat
                 ]
-                .align_y(Vertical::Center),
-                recent_messages
-            ]
-            .padding(20),
-        )
-        .width(200)
+                .align_y(Vertical::Center)
+            )
+            .style(styles::convo_header)
+            .padding(10),
+            recent_messages
+        ])
+        .padding(1)
+        .width(195)
         .height(Length::Fill)
         .style(styles::sidebar);
 
@@ -266,8 +291,13 @@ impl Conversation {
                     .messages
                     .iter()
                     .map(|msg| {
-                        let text = container(text(msg.content.clone()).font(NOTO_SANS).size(16))
-                            .padding(10);
+                        let text = container(
+                            text(msg.content.clone())
+                                .color(styles::text_color())
+                                .font(NOTO_SANS)
+                                .size(16),
+                        )
+                        .padding(10);
                         if !msg.is_reply {
                             row![
                                 Space::new().width(Length::Fill),
@@ -289,7 +319,7 @@ impl Conversation {
                     text("Select a conversation or begin a new one.")
                         .font(NOTO_SANS)
                         .size(24)
-                        .color(Color::WHITE),
+                        .color(styles::text_color()),
                 )
                 .center_y(Length::Fill)
                 .center_x(Length::Fill)
@@ -299,7 +329,7 @@ impl Conversation {
                 text("Type and hit enter to begin a conversation.")
                     .font(NOTO_SANS)
                     .size(24)
-                    .color(Color::WHITE),
+                    .color(styles::text_color()),
             )
             .center_y(Length::Fill)
             .center_x(Length::Fill)
@@ -330,8 +360,8 @@ impl Conversation {
                     })
                     .style(styles::text_editor_field),
             )
+            .style(styles::text_editor_container)
             .align_y(Vertical::Top)
-            .style(styles::message)
             .padding(6),
         )
         .padding(20)
@@ -372,16 +402,19 @@ impl Conversation {
         dialog(
             self.dialog_delete_chat_open,
             base,
-            text("Would you like to delete the conversation?").font(NOTO_SANS).size(16),
+            text("Would you like to delete the conversation?")
+                .color(styles::text_color())
+                .font(NOTO_SANS)
+                .size(16),
         )
         .title("Delete Chat")
         .push_button(
             iced_dialog::button("Delete", Message::DeleteChat(self.dialog_delete_chat))
-                .style(styles::chat_selected),
+                .style(styles::dialog_button),
         )
         .push_button(
             iced_dialog::button("Cancel", Message::DialogCancelDeleteChat)
-                .style(styles::chat_selected),
+                .style(styles::dialog_button),
         )
         .on_press(Message::DialogCancelDeleteChat)
         .into()

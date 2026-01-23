@@ -3,6 +3,7 @@ use uuid::Uuid;
 pub struct Chat {
     pub id: Uuid,
     pub title: String,
+    pub minor_text: String,
     pub messages: Vec<ChatMessage>,
 }
 

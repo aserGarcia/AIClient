@@ -79,6 +79,7 @@ impl Database {
                     Ok(Chat {
                         id: chat_id,
                         title: row.get(1)?,
+                        minor_text: format!("{:.15}...", m[0].content),
                         messages: m,
                     })
                 }
