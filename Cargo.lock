@@ -672,6 +672,7 @@ version = "0.1.0"
 dependencies = [
  "directories",
  "hf-hub",
+ "iced",
  "llama-cpp-2",
  "rusqlite",
  "thiserror 2.0.18",

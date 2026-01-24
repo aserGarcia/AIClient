@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 directories = "6.0.0" 
 hf-hub = "0.4.3"
+iced = "0.14.0"
 llama-cpp-2 = "0.1.132"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 thiserror = "2.0.18"

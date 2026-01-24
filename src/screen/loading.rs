@@ -81,18 +81,6 @@ impl Loading {
                 }
                 DownloadUpdate::Complete(result) => match result {
                     Ok(path) => {
-                        debug!("Loading models");
-                        let llm = assistant::LlamaCpp::load();
-                        match llm {
-                            Ok(model) => {
-                                info!("Loaded model successfully");
-                                if let Err(e) = model.test_generation() {
-                                    error!("{e}");
-                                };
-                            }
-                            Err(e) => error!("{}", e),
-                        }
-
                         self.progress.downloaded = self.progress.total;
                         debug!("Complete! Saved to: {}", path.display());
                         return Action::Continue;

@@ -12,6 +12,7 @@ use tracing::{debug, error};
 
 use crate::styles::styles;
 use convo_core::{
+    assistant::{LlamaCpp},
     chat::{Chat, ChatMessage},
     db,
 };
@@ -21,12 +22,20 @@ const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
 
 pub struct Conversation {
+    model: LlamaCpp,
     input: text_editor::Content,
     chats: Vec<Chat>,
     db: db::Database,
     dialog_delete_chat_open: bool,
     dialog_delete_chat: Option<Uuid>,
     current_chat_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Chatting {
+    Token(String),
+    Complete,
+    Error(String)
 }
 
 #[derive(Clone)]
@@ -40,6 +49,7 @@ pub enum Message {
     DialogCancelDeleteChat,
     InputChange(text_editor::Action),
     SubmitMessage,
+    ReplyMode(Chatting),
     AutoSave,
 }
 
@@ -64,8 +74,13 @@ impl Conversation {
             .load_chats()
             .map_err(|e| ConversationError::Loading(e.to_string()))?;
         debug!("chats loaded {}", chats.len());
+
+        debug!("Loading model");
+        let model = LlamaCpp::load().map_err(|e| ConversationError::Loading(e.to_string()));
+
         Ok((
             Self {
+                model: model,
                 input: text_editor::Content::new(),
                 chats: chats,
                 db: db,
@@ -149,15 +164,16 @@ impl Conversation {
                                 content: self.input.text(),
                                 is_reply: false,
                             };
-
-                            let default_reply = ChatMessage {
-                                id: msg_id + 1,
-                                chat_id: id,
-                                content: "This is a default AI reply".to_string(),
-                                is_reply: true,
-                            };
                             self.chats[idx].messages.push(message);
-                            self.chats[idx].messages.push(default_reply);
+
+
+                            // let default_reply = ChatMessage {
+                            //     id: msg_id + 1,
+                            //     chat_id: id,
+                            //     content: "This is a default AI reply".to_string(),
+                            //     is_reply: true,
+                            // };
+                            // self.chats[idx].messages.push(default_reply);
                         }
                     } else {
                         let id = Uuid::new_v4();
@@ -178,8 +194,26 @@ impl Conversation {
 
                     self.db.needs_save = true;
                     self.input = text_editor::Content::new();
+
+                    return Action::Run(Task::stream(self.model.reply(self.input.text())));
                 }
                 return Action::None;
+            }
+            Message::ReplyMode(message) => {
+                match message {
+                    Chatting::Token(tok) => {
+                        // TODO: store tokens for viewing
+                        println!("{tok}");
+                        return Action::None;
+                    }
+                    Chatting::Complete => {
+                        return Action::None;
+                    }
+                    Chatting::Error(e) => {
+                        error!("{e}");
+                        return Action::None;
+                    }
+                }
             }
             Message::AutoSave => {
                 if self.db.needs_save {
