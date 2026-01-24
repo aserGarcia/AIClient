@@ -1,12 +1,13 @@
 use convo::screen::{Screen, conversation, loading};
-use iced::{Size, Subscription, Task, time, window};
 use iced::widget::text;
+use iced::{Size, Subscription, Task, time, window};
 use std::time::Duration;
+use tracing::Level;
 use tracing_subscriber::fmt;
 
 fn main() -> iced::Result {
-
-    fmt::init();
+    let sub = fmt().with_max_level(Level::DEBUG).finish();
+    tracing::subscriber::set_global_default(sub).expect("Failed to sub");
     iced::application(Convo::new, Convo::update, Convo::view)
         .title(Convo::title)
         .window(window::Settings {
@@ -31,7 +32,7 @@ struct Convo {
 enum Message {
     Loading(loading::Message),
     Conversation(conversation::Message),
-    Error
+    Error,
 }
 
 impl Convo {
@@ -68,16 +69,16 @@ impl Convo {
                     loading::Action::Continue => {
                         if let Ok((conversation, task)) = conversation::Conversation::new() {
                             self.screen = Screen::Conversation(conversation);
-                            return task.map(Message::Conversation)
+                            return task.map(Message::Conversation);
                         } else {
-                            self.screen = Screen::Error("Error creating conversation struct".to_string());
-                            return Task::done(Message::Error)
+                            self.screen =
+                                Screen::Error("Error creating conversation struct".to_string());
+                            return Task::done(Message::Error);
                         }
-
                     }
                     loading::Action::Error(e) => {
-                            self.screen = Screen::Error(e);
-                            return Task::done(Message::Error)
+                        self.screen = Screen::Error(e);
+                        return Task::done(Message::Error);
                     }
                 }
             }
@@ -98,9 +99,7 @@ impl Convo {
                     conversation::Action::Run(task) => return task.map(Message::Conversation),
                 }
             }
-            Message::Error => {
-                Task::none()
-            }
+            Message::Error => Task::none(),
         }
     }
 
@@ -108,7 +107,7 @@ impl Convo {
         match &self.screen {
             Screen::Loading(loading) => loading.view().map(Message::Loading),
             Screen::Conversation(conversation) => conversation.view().map(Message::Conversation),
-            Screen::Error(e) => text(format!("Error: {}", e)).size(64).into()
+            Screen::Error(e) => text(format!("Error: {}", e)).size(64).into(),
         }
     }
 

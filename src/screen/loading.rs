@@ -1,4 +1,5 @@
 use crate::styles::styles;
+use convo_core::assistant;
 use convo_core::directory;
 use futures::StreamExt;
 use iced::alignment::{Horizontal, Vertical};
@@ -6,11 +7,10 @@ use iced::task::{Sipper, sipper};
 use iced::widget::{Space, column, container, progress_bar, row, text};
 use iced::{Background, Border, Font, Length, Task, Theme, color};
 use std::path::PathBuf;
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 const MOOLI: Font = Font::with_name("Mooli");
-const DOWNLOAD_URL: &str =
-    "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q5_K_M.gguf";
+const DOWNLOAD_URL: &str = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf";
 
 pub struct Loading {
     progress: DownloadProgress,
@@ -81,6 +81,18 @@ impl Loading {
                 }
                 DownloadUpdate::Complete(result) => match result {
                     Ok(path) => {
+                        debug!("Loading models");
+                        let llm = assistant::LlamaCpp::load();
+                        match llm {
+                            Ok(model) => {
+                                info!("Loaded model successfully");
+                                if let Err(e) = model.test_generation() {
+                                    error!("{e}");
+                                };
+                            }
+                            Err(e) => error!("{}", e),
+                        }
+
                         self.progress.downloaded = self.progress.total;
                         debug!("Complete! Saved to: {}", path.display());
                         return Action::Continue;
@@ -154,8 +166,11 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
         let cache_dir = directory::cache();
         let download_dir = cache_dir.join("downloads");
         match std::fs::create_dir_all(&download_dir) {
-            Ok(()) => {}
+            Ok(()) => {
+                info!("Downloads directory exists");
+            }
             Err(e) => {
+                error!("Failed to create downloads dir");
                 let msg = Message::DownloadUpdate(DownloadUpdate::Error(format!(
                     "Failed to create directory: {}",
                     e
@@ -170,8 +185,12 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
 
         if !file_path.exists() {
             let mut file = match std::fs::File::create(&file_path) {
-                Ok(f) => f,
+                Ok(f) => {
+                    debug!("Creating filepath to download");
+                    f
+                }
                 Err(e) => {
+                    error!("Failed to create file {}", file_path.display());
                     let msg = Message::DownloadUpdate(DownloadUpdate::Error(format!(
                         "Failed to create file: {}",
                         e
@@ -185,6 +204,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                 let chunk = match chunk {
                     Ok(c) => c,
                     Err(e) => {
+                        error!("Stream error {e}");
                         let msg = Message::DownloadUpdate(DownloadUpdate::Error(format!(
                             "Download Error: {}",
                             e
@@ -197,6 +217,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                 match std::io::Write::write_all(&mut file, &chunk) {
                     Ok(()) => {}
                     Err(e) => {
+                        error!("Download error {e}");
                         let msg = Message::DownloadUpdate(DownloadUpdate::Error(format!(
                             "Download Error: {}",
                             e
@@ -216,8 +237,11 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
             }
         }
 
-        println!("Donwload complete, returning Ok");
-        let msg = Message::DownloadUpdate(DownloadUpdate::Complete(Ok(file_path)));
+        info!("Download complete for {}, returning Ok", file_name);
+
+        let msg = Message::DownloadUpdate(DownloadUpdate::Complete(Ok(
+            directory::cache().to_path_buf()
+        )));
         let _ = sender.send(msg.clone()).await;
         return msg;
     })
