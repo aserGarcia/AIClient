@@ -168,7 +168,6 @@ impl Database {
                     msg.is_reply,
                 ],
             )?;
-            debug!("Message saved")
         }
         debug!("All messages saved for chat {}", chat.id);
         Ok(())

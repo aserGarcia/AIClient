@@ -228,8 +228,7 @@ impl Conversation {
                 match message {
                     Chatting::Token(tok) => {
                         self.replying_string.push_str(tok.as_str());
-                        return Action::None;
-                        // return Action::Run(operation::snap_to_end::<Message>("conversation"));
+                        return Action::Run(Task::done(Message::FocusInput));
                     }
                     Chatting::Complete => {
                         if let Some(id) = self.current_chat_id {
@@ -588,7 +587,7 @@ fn process_generation(model: &LlamaCpp, request: GenerationRequest) {
         {
             Ok(s) => s,
             Err(e) => {
-                request.response_tx.send(Chatting::Error(e.to_string()));
+                let _ = request.response_tx.send(Chatting::Error(e.to_string()));
                 return;
             }
         };
@@ -609,7 +608,7 @@ fn process_generation(model: &LlamaCpp, request: GenerationRequest) {
         n_cur += 1;
     }
 
-    println!("\n\nGeneration complete!");
+    debug!("\n\nGeneration complete!");
 
     let _ = request.response_tx.send(Chatting::Complete);
     return;
