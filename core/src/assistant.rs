@@ -1,9 +1,8 @@
 use crate::directory;
+use iced::task::{Sipper, sipper};
 use std::io::Write;
 use thiserror::Error;
 use tracing::{debug, error, info};
-use iced::task::{Sipper, sipper};
-use convo::screen::conversation::{Message, Chatting};
 
 use llama_cpp_2::context::params::LlamaContextParams;
 use llama_cpp_2::llama_backend::LlamaBackend;
@@ -17,7 +16,12 @@ pub struct LlamaCpp {
     pub model: LlamaModel,
 }
 
-
+#[derive(Debug, Clone, PartialEq)]
+pub enum Chatting {
+    Token(String),
+    Complete,
+    Error(String),
+}
 
 #[derive(Error, Debug)]
 pub enum LlmError {
@@ -44,20 +48,20 @@ impl LlamaCpp {
         Ok(LlamaCpp { backend, model })
     }
 
-    pub fn reply(&self, input: String) -> impl Sipper<Message, Message> {
+    pub fn reply(&self, input: String) -> impl Sipper<Chatting, Chatting> {
         sipper(move |mut sender| async move {
             let ctx_params = LlamaContextParams::default()
-                        .with_n_ctx(std::num::NonZeroU32::new(4096)) // Context size
-                        .with_n_batch(512) // Batch size
-                        .with_n_threads(4); // Number of threads
+                .with_n_ctx(std::num::NonZeroU32::new(4096)) // Context size
+                .with_n_batch(512) // Batch size
+                .with_n_threads(4); // Number of threads
 
             // Create context
-            let mut ctx = match self
-                .model
-                .new_context(&self.backend, ctx_params) {
-                    Ok(c) => c,
-                    Err(e) => {return Message::ReplyMode(Chatting::Error(e.to_string()));}
-                };
+            let mut ctx = match self.model.new_context(&self.backend, ctx_params) {
+                Ok(c) => c,
+                Err(e) => {
+                    return Chatting::Error(e.to_string());
+                }
+            };
 
             // Phi-3 chat template
             let prompt = format!("<|user|>\n{}<|end|>\n<|assistant|>\n", input);
@@ -65,10 +69,13 @@ impl LlamaCpp {
             // Tokenize the prompt
             let tokens = match self
                 .model
-                .str_to_token(&prompt, llama_cpp_2::model::AddBos::Always) {
-                    Ok(t) => t,
-                    Err(e) => {return Message::ReplyMode(Chatting::Error(e.to_string()));}
-                };
+                .str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)
+            {
+                Ok(t) => t,
+                Err(e) => {
+                    return Chatting::Error(e.to_string());
+                }
+            };
 
             debug!("Tokenized {} tokens", tokens.len());
 
@@ -78,14 +85,13 @@ impl LlamaCpp {
             let last_index: i32 = (tokens.len() - 1) as i32;
             for (i, token) in tokens.iter().enumerate() {
                 let is_last = i as i32 == last_index;
-                if let Err(e) = batch
-                    .add(*token, i as i32, &[0], is_last) {
-                        return Message::ReplyMode(Chatting::Error(e.to_string()));
-                    };
+                if let Err(e) = batch.add(*token, i as i32, &[0], is_last) {
+                    return Chatting::Error(e.to_string());
+                };
             }
 
             if let Err(e) = ctx.decode(&mut batch) {
-                return Message::ReplyMode(Chatting::Error(e.to_string()));
+                return Chatting::Error(e.to_string());
             };
 
             // Generation parameters
@@ -99,7 +105,6 @@ impl LlamaCpp {
                 LlamaSampler::chain_simple([LlamaSampler::dist(424242), LlamaSampler::greedy()]);
 
             for _ in 0..max_tokens {
-
                 let new_token = sampler.sample(&ctx, batch.n_tokens() - 1);
                 sampler.accept(new_token);
 
@@ -114,33 +119,33 @@ impl LlamaCpp {
                 // Decode and print the token
                 let token_str = match self
                     .model
-                    .token_to_str(new_token, llama_cpp_2::model::Special::Tokenize) {
-                        Ok(s) => s,
-                        Err(e) => {return Message::ReplyMode(Chatting::Error(e.to_string()));}
-                    };
+                    .token_to_str(new_token, llama_cpp_2::model::Special::Tokenize)
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return Chatting::Error(e.to_string());
+                    }
+                };
 
-                
-                let message = Message::ReplyMode(Chatting::Token(token_str));
+                let message = Chatting::Token(token_str);
                 let _ = sender.send(message).await;
 
                 // Prepare next batch with just the new token
                 batch.clear();
-                if let Err(e) = batch
-                    .add(new_token, n_cur, &[0], true) {
-                        return Message::ReplyMode(Chatting::Error(e.to_string()));
-                    };
+                if let Err(e) = batch.add(new_token, n_cur, &[0], true) {
+                    return Chatting::Error(e.to_string());
+                };
 
                 if let Err(e) = ctx.decode(&mut batch) {
-                    return Message::ReplyMode(Chatting::Error(e.to_string()));
+                    return Chatting::Error(e.to_string());
                 };
                 n_cur += 1;
             }
 
             println!("\n\nGeneration complete!");
 
-            let _  = sender.send(Message::ReplyMode(Chatting::Complete)).await;
-            return Message::ReplyMode(Chatting::Complete);
+            let _ = sender.send(Chatting::Complete).await;
+            return Chatting::Complete;
         })
-       
     }
 }

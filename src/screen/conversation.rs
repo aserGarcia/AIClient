@@ -1,4 +1,5 @@
 use iced::alignment::{Horizontal, Vertical};
+use iced::task::{Sipper, sipper};
 use iced::widget::{
     Space, button, column, container, operation, row, scrollable, text, text_editor,
 };
@@ -12,7 +13,7 @@ use tracing::{debug, error};
 
 use crate::styles::styles;
 use convo_core::{
-    assistant::{LlamaCpp},
+    assistant::{Chatting, LlamaCpp},
     chat::{Chat, ChatMessage},
     db,
 };
@@ -29,13 +30,6 @@ pub struct Conversation {
     dialog_delete_chat_open: bool,
     dialog_delete_chat: Option<Uuid>,
     current_chat_id: Option<Uuid>,
-}
-
-#[derive(Debug, Clone)]
-pub enum Chatting {
-    Token(String),
-    Complete,
-    Error(String)
 }
 
 #[derive(Clone)]
@@ -76,14 +70,14 @@ impl Conversation {
         debug!("chats loaded {}", chats.len());
 
         debug!("Loading model");
-        let model = LlamaCpp::load().map_err(|e| ConversationError::Loading(e.to_string()));
+        let model = LlamaCpp::load().map_err(|e| ConversationError::Loading(e.to_string()))?;
 
         Ok((
             Self {
-                model: model,
+                model,
                 input: text_editor::Content::new(),
-                chats: chats,
-                db: db,
+                chats,
+                db,
                 dialog_delete_chat_open: false,
                 dialog_delete_chat: None,
                 current_chat_id: None,
@@ -166,7 +160,6 @@ impl Conversation {
                             };
                             self.chats[idx].messages.push(message);
 
-
                             // let default_reply = ChatMessage {
                             //     id: msg_id + 1,
                             //     chat_id: id,
@@ -185,7 +178,7 @@ impl Conversation {
                             is_reply: false,
                         };
                         self.chats.push(Chat {
-                            id: id,
+                            id,
                             title: format!("Chat {:.8}", id.to_string()),
                             minor_text: format!("{:.15}...", self.input.text()),
                             messages: vec![message],
@@ -195,7 +188,7 @@ impl Conversation {
                     self.db.needs_save = true;
                     self.input = text_editor::Content::new();
 
-                    return Action::Run(Task::stream(self.model.reply(self.input.text())));
+                    return Action::Run(Task::stream(model_reply(self.input.text())));
                 }
                 return Action::None;
             }
@@ -453,4 +446,16 @@ impl Conversation {
         .on_press(Message::DialogCancelDeleteChat)
         .into()
     }
+}
+
+fn model_reply(model: &LlamaCpp, input_text: String) -> impl Sipper<(), Message> {
+    sipper(move |mut sender| async move {
+        while let reply = model.reply(input_text.clone()).await {
+            if reply == Chatting::Complete {
+                break;
+            }
+            let msg = Message::ReplyMode(reply);
+            let _ = sender.send(msg).await;
+        }
+    })
 }
