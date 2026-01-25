@@ -11,6 +11,7 @@ hf-hub = "0.4.3"
 
 iced = { version = "0.14.0", features = ["tokio", "sipper"]}
 iced_dialog = "0.14.0"
+llama-cpp-2 = "0.1.132"
 reqwest = {version = "0.13.1", features = ["stream"]}
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 thiserror = "2.0.17"
