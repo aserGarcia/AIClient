@@ -2,6 +2,7 @@ use crate::{
     chat::{Chat, ChatMessage},
     directory,
 };
+use iced::widget::markdown;
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -117,10 +118,12 @@ impl Database {
 
         let messages = match statement.query_map([*chat_id.as_bytes()], |row| {
             let id: i64 = row.get(0)?;
+            let content: String = row.get(2)?;
             Ok(ChatMessage {
                 id: id as usize,
                 chat_id: Uuid::from_bytes(row.get(1)?),
-                content: row.get(2)?,
+                content: content.clone(),
+                markdown: markdown::Content::parse(content.as_str()),
                 is_reply: row.get(3)?,
             })
         }) {

@@ -1,9 +1,9 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
 use iced::widget::{
-    Space, button, column, container, operation, row, scrollable, text, text_editor,
+    Space, button, column, container, markdown, operation, row, scrollable, text, text_editor,
 };
-use iced::{Element, Font, Length, Task};
+use iced::{Element, Font, Length, Renderer, Task, Theme};
 use iced_dialog::dialog;
 
 use thiserror::Error;
@@ -14,7 +14,7 @@ use tracing::{debug, error};
 use crate::styles::styles;
 use convo_core::{
     assistant::{Chatting, GenerationRequest, LlamaCpp},
-    chat::{Chat, ChatMessage},
+    chat::{Chat, ChatMessage, Reply},
     db,
 };
 
@@ -29,7 +29,7 @@ const NOTO_SANS: Font = Font::with_name("Noto Sans");
 pub struct Conversation {
     model_tx: mpsc::SyncSender<GenerationRequest>,
     input: text_editor::Content,
-    replying_string: String,
+    replying_string: Reply,
     chats: Vec<Chat>,
     db: db::Database,
     dialog_delete_chat_open: bool,
@@ -94,7 +94,10 @@ impl Conversation {
             Self {
                 model_tx,
                 input: text_editor::Content::new(),
-                replying_string: String::new(),
+                replying_string: Reply {
+                    content: String::new(),
+                    markdown: markdown::Content::new(),
+                },
                 chats,
                 db,
                 dialog_delete_chat_open: false,
@@ -175,6 +178,7 @@ impl Conversation {
                                 id: msg_id,
                                 chat_id: id,
                                 content: self.input.text(),
+                                markdown: markdown::Content::parse(self.input.text().as_str()),
                                 is_reply: false,
                             };
                             self.chats[idx].messages.push(message);
@@ -186,6 +190,7 @@ impl Conversation {
                             id: 0,
                             chat_id: id,
                             content: self.input.text(),
+                            markdown: markdown::Content::parse(self.input.text().as_str()),
                             is_reply: false,
                         };
                         self.chats.push(Chat {
@@ -208,7 +213,8 @@ impl Conversation {
             Message::ReplyMode(message) => {
                 match message {
                     Chatting::Token(tok) => {
-                        self.replying_string.push_str(tok.as_str());
+                        self.replying_string.content.push_str(tok.as_str());
+                        self.replying_string.markdown.push_str(tok.as_str());
                         return Action::Run(Task::done(Message::FocusInput));
                     }
                     Chatting::Complete => {
@@ -219,12 +225,16 @@ impl Conversation {
                                 let message = ChatMessage {
                                     id: msg_id,
                                     chat_id: id,
-                                    content: self.replying_string.clone(),
+                                    content: self.replying_string.content.clone(),
+                                    markdown: markdown::Content::parse(
+                                        self.replying_string.content.as_str(),
+                                    ),
                                     is_reply: true,
                                 };
                                 self.chats[idx].messages.push(message);
 
-                                self.replying_string.clear();
+                                self.replying_string.content.clear();
+                                self.replying_string.markdown = markdown::Content::new();
                             }
                         }
 
@@ -347,13 +357,19 @@ impl Conversation {
                     .messages
                     .iter()
                     .map(|msg| {
+                        // let text = container(
+                        //     text(msg.content.clone())
+                        //         .color(styles::text_color())
+                        //         .font(NOTO_SANS)
+                        //         .size(16),
+                        // )
+                        // .padding(10);
                         let text = container(
-                            text(msg.content.clone())
-                                .color(styles::text_color())
-                                .font(NOTO_SANS)
-                                .size(16),
+                            markdown::view(msg.markdown.items(), Theme::GruvboxLight)
+                                .map(|_| Message::FocusInput),
                         )
                         .padding(10);
+
                         if !msg.is_reply {
                             row![
                                 Space::new().width(Length::Fill),
@@ -362,21 +378,15 @@ impl Conversation {
                             .align_y(Vertical::Center)
                             .into()
                         } else {
-                            row![text, Space::new().width(Length::Fill)]
-                                .align_y(Vertical::Center)
-                                .into()
+                            row![text].align_y(Vertical::Center).into()
                         }
                     })
                     .collect();
 
-                if !self.replying_string.is_empty() {
-                    let text = container(
-                        text(self.replying_string.clone())
-                            .color(styles::text_color())
-                            .font(NOTO_SANS)
-                            .size(16),
-                    )
-                    .padding(10);
+                if !self.replying_string.content.is_empty() {
+                    let text =
+                        markdown::view(self.replying_string.markdown.items(), Theme::GruvboxLight)
+                            .map(|_| Message::FocusInput);
                     let bubble =
                         row![text, Space::new().width(Length::Fill)].align_y(Vertical::Center);
                     messages.push(bubble.into())
@@ -404,7 +414,13 @@ impl Conversation {
             .center_x(Length::Fill)
         };
 
-        let conversation = conversation.height(Length::FillPortion(6)).max_width(800);
+        let conversation = row![
+            Space::new().width(Length::FillPortion(1)),
+            conversation
+                .height(Length::FillPortion(6))
+                .width(Length::FillPortion(4)),
+            Space::new().width(Length::FillPortion(1))
+        ];
 
         //
         // Input Field
