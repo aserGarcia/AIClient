@@ -50,6 +50,7 @@ pub enum Message {
     SubmitMessage,
     ReplyMode(Chatting),
     AutoSave,
+    Fallback(String),
 }
 
 pub enum Action {
@@ -61,6 +62,24 @@ pub enum Action {
 pub enum ConversationError {
     #[error("Failed to load conversations: {0}")]
     Loading(String),
+}
+
+struct Viewer {}
+
+impl<'a> markdown::Viewer<'a, Message> for Viewer {
+    fn on_link_click(url: markdown::Uri) -> Message {
+        Message::FocusInput
+    }
+
+    fn code_block(
+        &self,
+        settings: markdown::Settings,
+        _language: Option<&'a str>,
+        code: &'a str,
+        lines: &'a [markdown::Text],
+    ) -> Element<'a, Message> {
+        markdown::code_block(settings, lines, Message::Fallback)
+    }
 }
 
 impl Conversation {
@@ -110,6 +129,9 @@ impl Conversation {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
+            Message::Fallback(msg) => {
+                return Action::None;
+            }
             Message::Initialize => {
                 return Action::Run(Task::batch([Task::done(Message::FocusInput)]));
             }
@@ -365,8 +387,12 @@ impl Conversation {
                         // )
                         // .padding(10);
                         let text = container(
-                            markdown::view(msg.markdown.items(), Theme::GruvboxLight)
-                                .map(|_| Message::FocusInput),
+                            markdown::view_with(
+                                msg.markdown.items(),
+                                Theme::GruvboxLight,
+                                &Viewer {},
+                            )
+                            .map(|_| Message::FocusInput),
                         )
                         .padding(10);
 
@@ -384,9 +410,12 @@ impl Conversation {
                     .collect();
 
                 if !self.replying_string.content.is_empty() {
-                    let text =
-                        markdown::view(self.replying_string.markdown.items(), Theme::GruvboxLight)
-                            .map(|_| Message::FocusInput);
+                    let text = markdown::view_with(
+                        self.replying_string.markdown.items(),
+                        Theme::GruvboxLight,
+                        &Viewer {},
+                    )
+                    .map(|_| Message::FocusInput);
                     let bubble =
                         row![text, Space::new().width(Length::Fill)].align_y(Vertical::Center);
                     messages.push(bubble.into())
