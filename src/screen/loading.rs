@@ -1,11 +1,10 @@
 use crate::styles::styles;
-use convo_core::assistant;
 use convo_core::directory;
 use futures::StreamExt;
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
 use iced::widget::{Space, column, container, progress_bar, row, text};
-use iced::{Background, Border, Font, Length, Task, Theme, color};
+use iced::{Background, Border, Font, Length, Task, Theme};
 use std::path::PathBuf;
 use tracing::{debug, error, info};
 

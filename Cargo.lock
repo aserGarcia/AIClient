@@ -657,7 +657,6 @@ dependencies = [
  "hf-hub",
  "iced",
  "iced_dialog",
- "llama-cpp-2",
  "reqwest 0.13.1",
  "rusqlite",
  "thiserror 2.0.18",
