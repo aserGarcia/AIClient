@@ -13,7 +13,7 @@ use tracing::{debug, error};
 
 use crate::styles::styles;
 use convo_core::{
-    assistant::LlamaCpp,
+    assistant::{Chatting, GenerationRequest, LlamaCpp},
     chat::{Chat, ChatMessage},
     db,
 };
@@ -22,19 +22,12 @@ use std::io::Write;
 use std::sync::mpsc;
 use std::thread;
 
-use llama_cpp_2::context::params::LlamaContextParams;
-use llama_cpp_2::llama_backend::LlamaBackend;
-use llama_cpp_2::llama_batch::LlamaBatch;
-use llama_cpp_2::model::LlamaModel;
-use llama_cpp_2::model::params::LlamaModelParams;
-use llama_cpp_2::sampling::LlamaSampler;
-
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
 
 pub struct Conversation {
-    model_tx: mpsc::Sender<GenerationRequest>,
+    model_tx: mpsc::SyncSender<GenerationRequest>,
     input: text_editor::Content,
     replying_string: String,
     chats: Vec<Chat>,
@@ -59,21 +52,9 @@ pub enum Message {
     AutoSave,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Chatting {
-    Token(String),
-    Complete,
-    Error(String),
-}
-
 pub enum Action {
     None,
     Run(Task<Message>),
-}
-
-struct GenerationRequest {
-    input: String,
-    response_tx: mpsc::Sender<Chatting>,
 }
 
 #[derive(Error, Debug)]
@@ -88,7 +69,7 @@ impl Conversation {
         let db = db::Database::new().map_err(|e| ConversationError::Loading(e.to_string()))?;
         debug!("db loaded");
 
-        let (model_tx, model_rx) = mpsc::channel::<GenerationRequest>();
+        let (model_tx, model_rx) = mpsc::sync_channel::<GenerationRequest>(1);
 
         let chats = db
             .load_chats()
@@ -105,7 +86,7 @@ impl Conversation {
                 }
             };
             while let Ok(request) = model_rx.recv() {
-                process_generation(&model, request)
+                model.process_generation(request)
             }
         });
 
@@ -509,113 +490,8 @@ impl Conversation {
     }
 }
 
-fn process_generation(model: &LlamaCpp, request: GenerationRequest) {
-    let ctx_params = LlamaContextParams::default()
-        .with_n_ctx(std::num::NonZeroU32::new(4096)) // Context size
-        .with_n_batch(512) // Batch size
-        .with_n_threads(4); // Number of threads
-
-    // Create context
-    let mut ctx = match model.model.new_context(&model.backend, ctx_params) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-            return;
-        }
-    };
-
-    // Phi-3 chat template
-    let prompt = format!("<|user|>\n{}<|end|>\n<|assistant|>\n", request.input);
-
-    // Tokenize the prompt
-    let tokens = match model
-        .model
-        .str_to_token(&prompt, llama_cpp_2::model::AddBos::Always)
-    {
-        Ok(t) => t,
-        Err(e) => {
-            let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-            return;
-        }
-    };
-
-    debug!("Tokenized {} tokens", tokens.len());
-
-    // Decode the initial prompt
-    let mut batch = LlamaBatch::new(512, 1);
-
-    let last_index: i32 = (tokens.len() - 1) as i32;
-    for (i, token) in tokens.iter().enumerate() {
-        let is_last = i as i32 == last_index;
-        if let Err(e) = batch.add(*token, i as i32, &[0], is_last) {
-            let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-            return;
-        };
-    }
-
-    if let Err(e) = ctx.decode(&mut batch) {
-        let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-        return;
-    };
-
-    // Generation parameters
-    let max_tokens = 100;
-    let mut n_cur = batch.n_tokens();
-    let mut generated_tokens = Vec::new();
-
-    debug!("\nGenerating response:\n");
-
-    let mut sampler =
-        LlamaSampler::chain_simple([LlamaSampler::dist(424242), LlamaSampler::greedy()]);
-
-    for _ in 0..max_tokens {
-        let new_token = sampler.sample(&ctx, batch.n_tokens() - 1);
-        sampler.accept(new_token);
-
-        // Check for EOS token
-        if model.model.is_eog_token(new_token) {
-            debug!("\nEOS token reached");
-            break;
-        }
-
-        generated_tokens.push(new_token);
-
-        // Decode and print the token
-        let token_str = match model
-            .model
-            .token_to_str(new_token, llama_cpp_2::model::Special::Tokenize)
-        {
-            Ok(s) => s,
-            Err(e) => {
-                let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-                return;
-            }
-        };
-
-        let _ = request.response_tx.send(Chatting::Token(token_str));
-
-        // Prepare next batch with just the new token
-        batch.clear();
-        if let Err(e) = batch.add(new_token, n_cur, &[0], true) {
-            let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-            return;
-        };
-
-        if let Err(e) = ctx.decode(&mut batch) {
-            let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-            return;
-        };
-        n_cur += 1;
-    }
-
-    debug!("\n\nGeneration complete!");
-
-    let _ = request.response_tx.send(Chatting::Complete);
-    return;
-}
-
 fn generate_reply_with_worker(
-    model_tx: mpsc::Sender<GenerationRequest>,
+    model_tx: mpsc::SyncSender<GenerationRequest>,
     input: String,
 ) -> impl Sipper<Message, Message> {
     sipper(move |mut sender| async move {
