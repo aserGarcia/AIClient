@@ -7,10 +7,16 @@ edition = "2024"
 directories = "6.0.0" 
 hf-hub = "0.4.3"
 iced = "0.14.0"
-llama-cpp-2 = "0.1.132"
+llama-cpp-2 = {version = "0.1.132"}
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 thiserror = "2.0.18"
 tokenizers = "0.22.2"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.22"
 uuid = "1.19.0"
+
+[features]
+default = []
+vulkan = ["llama-cpp-2/vulkan"]
+cuda = ["llama-cpp-2/cuda"]
+metal = ["llama-cpp-2/metal"]

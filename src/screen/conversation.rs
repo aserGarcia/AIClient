@@ -1,7 +1,8 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
 use iced::widget::{
-    Space, button, column, container, markdown, operation, row, scrollable, text, text_editor,
+    Space, button, column, container, markdown, operation, right, row, scrollable, text,
+    text_editor,
 };
 use iced::{Element, Font, Length, Renderer, Task, Theme};
 use iced_dialog::dialog;
@@ -11,7 +12,7 @@ use uuid::Uuid;
 
 use tracing::{debug, error};
 
-use crate::styles::styles;
+use crate::styles::{styles, viewers};
 use convo_core::{
     assistant::{Chatting, GenerationRequest, LlamaCpp},
     chat::{Chat, ChatMessage, Reply},
@@ -41,6 +42,7 @@ pub struct Conversation {
 pub enum Message {
     Initialize,
     FocusInput,
+    Markdown(viewers::Interaction),
     NewChat,
     OpenChat(Uuid),
     DeleteChat(Option<Uuid>),
@@ -62,24 +64,6 @@ pub enum Action {
 pub enum ConversationError {
     #[error("Failed to load conversations: {0}")]
     Loading(String),
-}
-
-struct Viewer {}
-
-impl<'a> markdown::Viewer<'a, Message> for Viewer {
-    fn on_link_click(url: markdown::Uri) -> Message {
-        Message::FocusInput
-    }
-
-    fn code_block(
-        &self,
-        settings: markdown::Settings,
-        _language: Option<&'a str>,
-        code: &'a str,
-        lines: &'a [markdown::Text],
-    ) -> Element<'a, Message> {
-        markdown::code_block(settings, lines, Message::Fallback)
-    }
 }
 
 impl Conversation {
@@ -134,6 +118,9 @@ impl Conversation {
             }
             Message::Initialize => {
                 return Action::Run(Task::batch([Task::done(Message::FocusInput)]));
+            }
+            Message::Markdown(interaction) => {
+                return Action::Run(interaction.perform());
             }
             Message::FocusInput => {
                 let focus_input = operation::focus::<Message>("input");
@@ -379,32 +366,22 @@ impl Conversation {
                     .messages
                     .iter()
                     .map(|msg| {
-                        // let text = container(
-                        //     text(msg.content.clone())
-                        //         .color(styles::text_color())
-                        //         .font(NOTO_SANS)
-                        //         .size(16),
-                        // )
-                        // .padding(10);
                         let text = container(
                             markdown::view_with(
                                 msg.markdown.items(),
                                 Theme::GruvboxLight,
-                                &Viewer {},
+                                &viewers::MarkdownViewer {},
                             )
-                            .map(|_| Message::FocusInput),
+                            .map(|event| Message::Markdown(event)),
                         )
                         .padding(10);
 
                         if !msg.is_reply {
-                            row![
-                                Space::new().width(Length::Fill),
-                                text.style(styles::message)
-                            ]
-                            .align_y(Vertical::Center)
-                            .into()
+                            right(text.style(styles::message))
+                                .align_y(Vertical::Center)
+                                .into()
                         } else {
-                            row![text].align_y(Vertical::Center).into()
+                            text.into()
                         }
                     })
                     .collect();
@@ -413,12 +390,10 @@ impl Conversation {
                     let text = markdown::view_with(
                         self.replying_string.markdown.items(),
                         Theme::GruvboxLight,
-                        &Viewer {},
+                        &viewers::MarkdownViewer {},
                     )
-                    .map(|_| Message::FocusInput);
-                    let bubble =
-                        row![text, Space::new().width(Length::Fill)].align_y(Vertical::Center);
-                    messages.push(bubble.into())
+                    .map(|event| Message::Markdown(event));
+                    messages.push(text.into())
                 }
 
                 container(scrollable(column(messages).spacing(10).padding(20)).id("conversation"))

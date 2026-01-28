@@ -53,50 +53,40 @@ impl Convo {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Loading(message) => {
-                let loading = if let Screen::Loading(loading) = &mut self.screen {
-                    Some(loading)
-                } else {
-                    None
-                };
-                let Some(loading) = loading else {
-                    return Task::none();
-                };
-
-                let action = loading.update(message);
-                match action {
-                    loading::Action::None => return Task::none(),
-                    loading::Action::Run(task) => return task.map(Message::Loading),
-                    loading::Action::Continue => {
-                        if let Ok((conversation, task)) = conversation::Conversation::new() {
-                            self.screen = Screen::Conversation(conversation);
-                            return task.map(Message::Conversation);
-                        } else {
-                            self.screen =
-                                Screen::Error("Error creating conversation struct".to_string());
+                if let Screen::Loading(loading) = &mut self.screen {
+                    let action = loading.update(message);
+                    match action {
+                        loading::Action::None => return Task::none(),
+                        loading::Action::Run(task) => return task.map(Message::Loading),
+                        loading::Action::Continue => {
+                            if let Ok((conversation, task)) = conversation::Conversation::new() {
+                                self.screen = Screen::Conversation(conversation);
+                                return task.map(Message::Conversation);
+                            } else {
+                                self.screen =
+                                    Screen::Error("Error creating conversation struct".to_string());
+                                return Task::done(Message::Error);
+                            }
+                        }
+                        loading::Action::Error(e) => {
+                            self.screen = Screen::Error(e);
                             return Task::done(Message::Error);
                         }
                     }
-                    loading::Action::Error(e) => {
-                        self.screen = Screen::Error(e);
-                        return Task::done(Message::Error);
-                    }
+                } else {
+                    return Task::none();
                 }
             }
             Message::Conversation(message) => {
-                let conversation = if let Screen::Conversation(conversation) = &mut self.screen {
-                    Some(conversation)
+                if let Screen::Conversation(conversation) = &mut self.screen {
+                    let action = conversation.update(message);
+
+                    match action {
+                        conversation::Action::None => return Task::none(),
+                        conversation::Action::Run(task) => return task.map(Message::Conversation),
+                    }
                 } else {
-                    None
-                };
-
-                let Some(conversation) = conversation else {
                     return Task::none();
-                };
-                let action = conversation.update(message);
-
-                match action {
-                    conversation::Action::None => return Task::none(),
-                    conversation::Action::Run(task) => return task.map(Message::Conversation),
                 }
             }
             Message::Error => Task::none(),

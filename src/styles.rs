@@ -183,6 +183,21 @@ pub mod styles {
         }
     }
 
+    pub fn copy_code_button(_theme: &Theme, status: button::Status) -> button::Style {
+        match status {
+            button::Status::Hovered | button::Status::Active => button::Style {
+                text_color: background_dark_color(),
+                background: Some(primary_color().into()),
+                ..Default::default()
+            },
+            _ => button::Style {
+                text_color: background_dark_color(),
+                background: Some(secondary_color().into()),
+                ..Default::default()
+            },
+        }
+    }
+
     pub fn text_editor_field(_theme: &Theme, _status: text_editor::Status) -> text_editor::Style {
         text_editor::Style {
             background: background_light_color().into(),
@@ -204,6 +219,51 @@ pub mod styles {
                 ..Default::default()
             },
             ..Default::default()
+        }
+    }
+}
+
+pub mod viewers {
+    use crate::styles::styles;
+    use iced::widget::{button, container, hover, markdown, right, text};
+    use iced::{Element, Task, clipboard};
+
+    #[derive(Clone)]
+    pub enum Interaction {
+        Copy(String),
+    }
+
+    impl Interaction {
+        pub fn perform<Message>(self) -> Task<Message> {
+            match self {
+                Interaction::Copy(text) => clipboard::write(text),
+            }
+        }
+    }
+
+    pub struct MarkdownViewer {}
+
+    impl<'a> markdown::Viewer<'a, Interaction> for MarkdownViewer {
+        // TODO: Open in browser
+        fn on_link_click(url: markdown::Uri) -> Interaction {
+            Interaction::Copy(url)
+        }
+
+        fn code_block(
+            &self,
+            settings: markdown::Settings,
+            _language: Option<&'a str>,
+            code: &'a str,
+            lines: &'a [markdown::Text],
+        ) -> Element<'a, Interaction> {
+            let code_block = markdown::code_block(settings, lines, Interaction::Copy);
+
+            let copy = button(text("Copy").size(settings.code_size))
+                .on_press(Interaction::Copy(code.to_string()))
+                .style(styles::copy_code_button)
+                .padding(settings.code_size / 2);
+
+            hover(code_block, right(copy))
         }
     }
 }
