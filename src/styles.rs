@@ -225,7 +225,7 @@ pub mod styles {
 
 pub mod viewers {
     use crate::styles::styles;
-    use iced::widget::{button, container, hover, markdown, right, text};
+    use iced::widget::{button, hover, markdown, right, text};
     use iced::{Element, Task, clipboard};
 
     #[derive(Clone)]

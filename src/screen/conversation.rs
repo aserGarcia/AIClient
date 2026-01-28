@@ -4,7 +4,7 @@ use iced::widget::{
     Space, button, column, container, markdown, operation, right, row, scrollable, text,
     text_editor,
 };
-use iced::{Element, Font, Length, Renderer, Task, Theme};
+use iced::{Element, Font, Length, Task, Theme};
 use iced_dialog::dialog;
 
 use thiserror::Error;
@@ -19,7 +19,6 @@ use convo_core::{
     db,
 };
 
-use std::io::Write;
 use std::sync::mpsc;
 use std::thread;
 
