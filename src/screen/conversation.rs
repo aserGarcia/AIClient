@@ -51,7 +51,6 @@ pub enum Message {
     SubmitMessage,
     ReplyMode(Chatting),
     AutoSave,
-    Fallback(String),
 }
 
 pub enum Action {
@@ -112,9 +111,6 @@ impl Conversation {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
-            Message::Fallback(msg) => {
-                return Action::None;
-            }
             Message::Initialize => {
                 return Action::Run(Task::batch([Task::done(Message::FocusInput)]));
             }
