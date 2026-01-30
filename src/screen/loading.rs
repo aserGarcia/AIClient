@@ -17,7 +17,7 @@ pub struct Loading {
 }
 
 #[derive(Debug, Clone)]
-struct DownloadProgress {
+pub struct DownloadProgress {
     downloaded: u64,
     total: u64,
 }
@@ -46,7 +46,7 @@ pub enum Message {
 }
 
 #[derive(Debug, Clone)]
-enum DownloadUpdate {
+pub enum DownloadUpdate {
     Progress(DownloadProgress),
     Complete(Result<PathBuf, String>),
     Error(String),
@@ -244,3 +244,4 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
         return msg;
     })
 }
+
