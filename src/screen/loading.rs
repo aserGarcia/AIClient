@@ -1,5 +1,5 @@
 use crate::styles::styles;
-use convo_core::directory;
+use convo_core::{DOWNLOAD_URL, directory};
 use futures::StreamExt;
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use tracing::{debug, error, info};
 
 const MOOLI: Font = Font::with_name("Mooli");
-const DOWNLOAD_URL: &str = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf";
 
 pub struct Loading {
     progress: DownloadProgress,
@@ -223,6 +222,13 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                 let _ = sender.send(message).await;
             }
         }
+        // updating the progress bar
+        let complete_progressbar =
+            Message::DownloadUpdate(DownloadUpdate::Progress(DownloadProgress {
+                downloaded: total_size,
+                total: total_size,
+            }));
+        let _ = sender.send(complete_progressbar).await;
 
         info!("Download complete for {}, returning Ok", file_name);
 
