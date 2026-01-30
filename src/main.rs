@@ -84,6 +84,10 @@ impl Convo {
                     match action {
                         conversation::Action::None => return Task::none(),
                         conversation::Action::Run(task) => return task.map(Message::Conversation),
+                        conversation::Action::Error(e) => {
+                            self.screen = Screen::Error(e);
+                            return Task::done(Message::Error);
+                        }
                     }
                 } else {
                     return Task::none();

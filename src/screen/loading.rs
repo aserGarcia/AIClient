@@ -10,7 +10,6 @@ use tracing::{debug, error, info};
 
 const MOOLI: Font = Font::with_name("Mooli");
 const PROGRESS_BAR_HEIGHT: f32 = 10.0;
-const TITLE_SPACING: f32 = 60.0;
 
 pub struct Loading {
     progress: DownloadProgress,
@@ -126,14 +125,10 @@ impl Loading {
                         .girth(Length::Fixed(PROGRESS_BAR_HEIGHT)),
                     Space::new().width(Length::FillPortion(1))
                 ],
-                Space::new().height(Length::Fixed(TITLE_SPACING))
             ]
             .align_x(Horizontal::Center),
         )
-        .height(Length::Fill)
-        .width(Length::Fill)
-        .align_x(Horizontal::Center)
-        .align_y(Vertical::Center)
+        .center(Length::Fill)
         .style(|_theme: &Theme| container::Style {
             background: Some(styles::background_color().into()),
             ..Default::default()
@@ -244,4 +239,3 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
         return msg;
     })
 }
-

@@ -1,7 +1,7 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
 use iced::widget::{
-    Space, button, column, container, markdown, operation, right, row, scrollable, text,
+    Space, button, center, column, container, markdown, operation, right, row, scrollable, text,
     text_editor,
 };
 use iced::{Element, Font, Length, Task, Theme};
@@ -27,6 +27,7 @@ const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
 
 pub struct Conversation {
+    status: ModelStatus,
     model_tx: mpsc::SyncSender<GenerationRequest>,
     input: text_editor::Content,
     replying_string: Reply,
@@ -53,9 +54,21 @@ pub enum Message {
     AutoSave,
 }
 
+struct ModelStatus {
+    rx: mpsc::Receiver<Result<(), String>>,
+    status: Status,
+}
+
+#[derive(PartialEq)]
+enum Status {
+    Loading,
+    Loaded,
+}
+
 pub enum Action {
     None,
     Run(Task<Message>),
+    Error(String),
 }
 
 #[derive(Error, Debug)]
@@ -71,6 +84,7 @@ impl Conversation {
         debug!("db loaded");
 
         let (model_tx, model_rx) = mpsc::sync_channel::<GenerationRequest>(1);
+        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         let chats = db
             .load_chats()
@@ -80,9 +94,13 @@ impl Conversation {
         debug!("Loading model");
         thread::spawn(move || {
             let model = match LlamaCpp::load() {
-                Ok(m) => m,
+                Ok(m) => {
+                    let _ = ready_tx.send(Ok(()));
+                    m
+                }
                 Err(e) => {
                     error!("Failed to load model: {}", e);
+                    let _ = ready_tx.send(Err(e.to_string()));
                     return;
                 }
             };
@@ -93,6 +111,10 @@ impl Conversation {
 
         Ok((
             Self {
+                status: ModelStatus {
+                    rx: ready_rx,
+                    status: Status::Loading,
+                },
                 model_tx,
                 input: text_editor::Content::new(),
                 replying_string: Reply {
@@ -111,9 +133,14 @@ impl Conversation {
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
-            Message::Initialize => {
-                return Action::Run(Task::batch([Task::done(Message::FocusInput)]));
-            }
+            Message::Initialize => match &self.status.rx.recv() {
+                Ok(Ok(())) => {
+                    self.status.status = Status::Loaded;
+                    return Action::Run(Task::done(Message::FocusInput));
+                }
+                Ok(Err(e)) => return Action::Error(e.to_string()),
+                Err(e) => return Action::Error(e.to_string()),
+            },
             Message::Markdown(interaction) => {
                 return Action::Run(interaction.perform());
             }
@@ -268,6 +295,21 @@ impl Conversation {
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
+        if self.status.status == Status::Loading {
+            let page = container(column![
+                text("Convo")
+                    .color(styles::text_color())
+                    .font(MOOLI)
+                    .size(64),
+                Space::new().height(10.0)
+            ])
+            .center(Length::Fill)
+            .style(|_theme: &Theme| container::Style {
+                background: Some(styles::background_color().into()),
+                ..Default::default()
+            });
+            return page.into();
+        }
         //
         // Sidebar Widgets
         //
