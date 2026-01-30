@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use tracing::{debug, error, info};
 
 const MOOLI: Font = Font::with_name("Mooli");
+const PROGRESS_BAR_HEIGHT: f32 = 10.0;
+const TITLE_SPACING: f32 = 60.0;
 
 pub struct Loading {
     progress: DownloadProgress,
@@ -21,6 +23,13 @@ struct DownloadProgress {
 }
 
 impl DownloadProgress {
+    fn new() -> Self {
+        Self {
+            downloaded: 0,
+            total: 0,
+        }
+    }
+
     fn get_progress(&self) -> f32 {
         if self.total > 0 {
             self.downloaded as f32 / self.total as f32
@@ -55,10 +64,7 @@ impl Loading {
         debug!("Ready to download");
         (
             Self {
-                progress: DownloadProgress {
-                    downloaded: 0,
-                    total: 0,
-                },
+                progress: DownloadProgress::new(),
             },
             Task::done(Message::StartDownload),
         )
@@ -67,30 +73,29 @@ impl Loading {
     pub fn update(&mut self, message: Message) -> Action {
         match message {
             Message::StartDownload => {
-                self.progress.downloaded = 0;
+                self.progress = DownloadProgress::new();
                 debug!("Starting download...");
-
                 Action::Run(Task::stream(download_file(DOWNLOAD_URL)))
             }
             Message::DownloadUpdate(update) => match update {
                 DownloadUpdate::Progress(progress) => {
                     self.progress = progress;
-                    return Action::None;
+                    Action::None
                 }
                 DownloadUpdate::Complete(result) => match result {
                     Ok(path) => {
                         self.progress.downloaded = self.progress.total;
-                        debug!("Complete! Saved to: {}", path.display());
-                        return Action::Continue;
+                        info!("Download complete! Saved to: {}", path.display());
+                        Action::Continue
                     }
                     Err(e) => {
-                        error!("Error: {}", e);
-                        return Action::Error(e);
+                        error!("Download failed: {}", e);
+                        Action::Error(e)
                     }
                 },
                 DownloadUpdate::Error(e) => {
-                    error!("Error {}", e);
-                    return Action::Error(e.to_string());
+                    error!("Download error: {}", e);
+                    Action::Error(e)
                 }
             },
         }
@@ -118,10 +123,10 @@ impl Loading {
                             }
                         })
                         .length(Length::FillPortion(2))
-                        .girth(Length::Fixed(10.0)),
+                        .girth(Length::Fixed(PROGRESS_BAR_HEIGHT)),
                     Space::new().width(Length::FillPortion(1))
                 ],
-                Space::new().height(Length::Fixed(60.0))
+                Space::new().height(Length::Fixed(TITLE_SPACING))
             ]
             .align_x(Horizontal::Center),
         )
@@ -161,7 +166,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                     "Failed to create directory: {}",
                     e
                 )));
-                let _ = sender.send(msg.clone()).await;
+                sender.send(msg.clone()).await;
                 return msg;
             }
         }
@@ -181,7 +186,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                         "Failed to create file: {}",
                         e
                     )));
-                    let _ = sender.send(msg.clone()).await;
+                    sender.send(msg.clone()).await;
                     return msg;
                 }
             };
@@ -195,7 +200,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                             "Download Error: {}",
                             e
                         )));
-                        let _ = sender.send(msg.clone()).await;
+                        sender.send(msg.clone()).await;
                         return msg;
                     }
                 };
@@ -208,7 +213,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                             "Download Error: {}",
                             e
                         )));
-                        let _ = sender.send(msg.clone()).await;
+                        sender.send(msg.clone()).await;
                         return msg;
                     }
                 }
@@ -219,7 +224,7 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                     total: total_size,
                 }));
 
-                let _ = sender.send(message).await;
+                sender.send(message).await;
             }
         }
         // updating the progress bar
@@ -228,14 +233,14 @@ fn download_file(url: &'static str) -> impl Sipper<Message, Message> {
                 downloaded: total_size,
                 total: total_size,
             }));
-        let _ = sender.send(complete_progressbar).await;
+        sender.send(complete_progressbar).await;
 
         info!("Download complete for {}, returning Ok", file_name);
 
         let msg = Message::DownloadUpdate(DownloadUpdate::Complete(Ok(
             directory::cache().to_path_buf()
         )));
-        let _ = sender.send(msg.clone()).await;
+        sender.send(msg.clone()).await;
         return msg;
     })
 }
