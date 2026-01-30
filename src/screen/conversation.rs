@@ -28,7 +28,7 @@ const NOTO_SANS: Font = Font::with_name("Noto Sans");
 
 pub struct Conversation {
     status: ModelStatus,
-    model_tx: mpsc::SyncSender<GenerationRequest>,
+    model_tx: mpsc::Sender<GenerationRequest>,
     input: text_editor::Content,
     replying_string: Reply,
     chats: Vec<Chat>,
@@ -83,7 +83,7 @@ impl Conversation {
         let db = db::Database::new().map_err(|e| ConversationError::Loading(e.to_string()))?;
         debug!("db loaded");
 
-        let (model_tx, model_rx) = mpsc::sync_channel::<GenerationRequest>(1);
+        let (model_tx, model_rx) = mpsc::channel::<GenerationRequest>();
         let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
 
         let chats = db
@@ -93,7 +93,7 @@ impl Conversation {
 
         debug!("Loading model");
         thread::spawn(move || {
-            let model = match LlamaCpp::load() {
+            let mut model = match LlamaCpp::load() {
                 Ok(m) => {
                     let _ = ready_tx.send(Ok(()));
                     m
@@ -548,7 +548,7 @@ impl Conversation {
 }
 
 fn generate_reply_with_worker(
-    model_tx: mpsc::SyncSender<GenerationRequest>,
+    model_tx: mpsc::Sender<GenerationRequest>,
     input: String,
 ) -> impl Sipper<Message, Message> {
     sipper(move |mut sender| async move {

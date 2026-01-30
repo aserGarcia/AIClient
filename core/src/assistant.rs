@@ -1,4 +1,5 @@
 use crate::{MODEL_NAME, directory};
+use llama_cpp_2::context::LlamaContext;
 use std::sync::mpsc;
 use thiserror::Error;
 use tracing::{debug, error};
@@ -10,9 +11,13 @@ use llama_cpp_2::model::LlamaModel;
 use llama_cpp_2::model::params::{LlamaModelParams, LlamaSplitMode};
 use llama_cpp_2::sampling::LlamaSampler;
 
+const BATCH_SIZE: usize = 512;
+const MODEL_CONTEXT_SIZE: usize = 4096;
+
 pub struct LlamaCpp {
     pub backend: LlamaBackend,
     pub model: LlamaModel,
+    sampler: LlamaSampler,
 }
 
 #[derive(Error, Debug)]
@@ -62,7 +67,7 @@ impl LlamaCpp {
                 LlamaModelParams::default()
                     .with_n_gpu_layers(1000)
                     .with_main_gpu(0)
-                    .with_split_mode(LlamaSplitMode::None)
+                    .with_split_mode(LlamaSplitMode::Layer)
             } else {
                 LlamaModelParams::default()
             }
@@ -74,26 +79,39 @@ impl LlamaCpp {
         let model = LlamaModel::load_from_file(&backend, model_path, &model_params)
             .map_err(|e| LlmError::LoadError(e.to_string()))?;
 
-        Ok(LlamaCpp { backend, model })
+        let sampler =
+            LlamaSampler::chain_simple([LlamaSampler::dist(424242), LlamaSampler::greedy()]);
+
+        Ok(LlamaCpp {
+            backend,
+            model,
+            sampler,
+        })
     }
 
-    pub fn process_generation(&self, request: GenerationRequest) {
+    pub fn process_generation(&mut self, request: GenerationRequest) {
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
+
         let ctx_params = LlamaContextParams::default()
-            .with_n_ctx(std::num::NonZeroU32::new(4096)) // Context size
-            .with_n_batch(512) // Batch size
-            .with_n_threads(4); // Number of threads
+            .with_n_ctx(std::num::NonZeroU32::new(MODEL_CONTEXT_SIZE as u32)) // Context size
+            .with_n_batch(BATCH_SIZE as u32) // Batch size
+            .with_n_threads(num_threads as i32); // Number of threads
 
         // Create context
-        let mut ctx = match self.model.new_context(&self.backend, ctx_params) {
-            Ok(c) => c,
-            Err(e) => {
-                let _ = request.response_tx.send(Chatting::Error(e.to_string()));
-                return;
-            }
-        };
+        let mut ctx = self
+            .model
+            .new_context(&self.backend, ctx_params)
+            .map_err(|e| LlmError::LoadError(e.to_string()))
+            .unwrap();
 
         // Phi-3 chat template
-        let prompt = format!("<|user|>\n{}<|end|>\n<|assistant|>\n", request.input);
+        let system = "You are a helpful assistant, respond concisely.";
+        let prompt = format!(
+            "<|user|>Y{}\n{}<|end|>\n<|assistant|>\n",
+            system, request.input
+        );
 
         // Tokenize the prompt
         let tokens = match self
@@ -110,7 +128,7 @@ impl LlamaCpp {
         debug!("Tokenized {} tokens", tokens.len());
 
         // Decode the initial prompt
-        let mut batch = LlamaBatch::new(512, 1);
+        let mut batch = LlamaBatch::new(BATCH_SIZE, 1);
 
         let last_index: i32 = (tokens.len() - 1) as i32;
         for (i, token) in tokens.iter().enumerate() {
@@ -121,7 +139,7 @@ impl LlamaCpp {
             };
         }
 
-        if let Err(e) = ctx.decode(&mut batch) {
+        if let Err(e) = &ctx.decode(&mut batch) {
             let _ = request.response_tx.send(Chatting::Error(e.to_string()));
             return;
         };
@@ -132,12 +150,9 @@ impl LlamaCpp {
 
         debug!("\nGenerating response:\n");
 
-        let mut sampler =
-            LlamaSampler::chain_simple([LlamaSampler::dist(424242), LlamaSampler::greedy()]);
-
         loop {
-            let new_token = sampler.sample(&ctx, batch.n_tokens() - 1);
-            sampler.accept(new_token);
+            let new_token = self.sampler.sample(&ctx, batch.n_tokens() - 1);
+            self.sampler.accept(new_token);
 
             // Check for EOS token
             if self.model.is_eog_token(new_token) {
@@ -168,7 +183,7 @@ impl LlamaCpp {
                 return;
             };
 
-            if let Err(e) = ctx.decode(&mut batch) {
+            if let Err(e) = &ctx.decode(&mut batch) {
                 let _ = request.response_tx.send(Chatting::Error(e.to_string()));
                 return;
             };
