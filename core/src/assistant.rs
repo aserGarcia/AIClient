@@ -1,4 +1,4 @@
-use crate::directory;
+use crate::{MODEL_NAME, directory};
 use std::sync::mpsc;
 use thiserror::Error;
 use tracing::{debug, error};
@@ -69,7 +69,7 @@ impl LlamaCpp {
         };
 
         // Load the model
-        let model_path = directory::cache().join("downloads/Phi-3-mini-4k-instruct-q4.gguf");
+        let model_path = directory::cache().join("downloads").join(MODEL_NAME);
         println!("Loading model from: {}", model_path.display());
         let model = LlamaModel::load_from_file(&backend, model_path, &model_params)
             .map_err(|e| LlmError::LoadError(e.to_string()))?;
