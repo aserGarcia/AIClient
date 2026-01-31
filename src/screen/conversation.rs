@@ -1,7 +1,7 @@
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
 use iced::widget::{
-    Space, button, center, column, container, markdown, operation, right, row, scrollable, text,
+    Space, button, column, container, markdown, operation, right, row, scrollable, text,
     text_editor,
 };
 use iced::{Element, Font, Length, Task, Theme};

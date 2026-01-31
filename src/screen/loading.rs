@@ -1,7 +1,7 @@
 use crate::styles::styles;
 use convo_core::{DOWNLOAD_URL, directory};
 use futures::StreamExt;
-use iced::alignment::{Horizontal, Vertical};
+use iced::alignment::Horizontal;
 use iced::task::{Sipper, sipper};
 use iced::widget::{Space, column, container, progress_bar, row, text};
 use iced::{Background, Border, Font, Length, Task, Theme};
