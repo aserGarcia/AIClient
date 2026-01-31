@@ -1,5 +1,4 @@
 use crate::{MODEL_NAME, directory};
-use llama_cpp_2::context::LlamaContext;
 use std::sync::mpsc;
 use thiserror::Error;
 use tracing::{debug, error};
