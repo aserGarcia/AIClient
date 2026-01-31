@@ -3,19 +3,19 @@ pub mod styles {
     use iced::{Border, Color, Theme, color};
 
     pub fn background_dark_color() -> Color {
-        color!(0x030303)
+        color!(0x212121)
     }
 
     pub fn background_color() -> Color {
-        color!(0x0A0A0A)
+        color!(0x292929)
     }
 
     pub fn background_light_color() -> Color {
-        color!(0x171717)
+        color!(0x212121)
     }
 
     pub fn text_color() -> Color {
-        color!(0xF2F2F2)
+        color!(0xffffff)
     }
 
     pub fn text_color_muted() -> Color {
@@ -31,7 +31,7 @@ pub mod styles {
     }
 
     pub fn primary_color() -> Color {
-        color!(0xCBAD62)
+        color!(0xa7c080)
     }
 
     pub fn secondary_color() -> Color {
@@ -45,7 +45,7 @@ pub mod styles {
     pub fn sidebar(_theme: &Theme) -> container::Style {
         container::Style {
             text_color: Some(text_color().into()),
-            background: Some(background_color().into()),
+            background: Some(background_dark_color().into()),
             border: Border {
                 color: border_color(),
                 width: 1.0,
@@ -68,7 +68,7 @@ pub mod styles {
     pub fn message(_theme: &Theme) -> container::Style {
         container::Style {
             text_color: Some(text_color().into()),
-            background: Some(background_color().into()),
+            background: Some(background_dark_color().into()),
             border: Border {
                 radius: 5.0.into(),
                 color: border_color(),

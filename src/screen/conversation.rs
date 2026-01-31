@@ -26,7 +26,7 @@ const CHAT_FONT: Font = Font::with_name("chat-icons");
 const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
 const NR_WORDS_FOR_TITLE: usize = 3;
-const TITLE_GEN_PROMPT: &str = "Summarize this text with two short words.";
+const TITLE_GEN_PROMPT: &str = "Summarize this text with three words.";
 
 pub struct Conversation {
     status: ModelStatus,
@@ -155,7 +155,7 @@ impl Conversation {
                 let uuid = Uuid::new_v4();
                 let chat = Chat {
                     id: uuid,
-                    title: String::new(),
+                    title: String::from("New Chat"),
                     minor_text: String::new(),
                     messages: Vec::new(),
                 };
@@ -217,11 +217,11 @@ impl Conversation {
                                 is_reply: false,
                             };
 
-                            if self.chats[idx].title.is_empty() {
+                            if self.chats[idx].minor_text.is_empty() {
                                 let prompt =
                                     format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
                                 let reply = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
-                                self.chats[idx].title.push_str(reply.as_str());
+                                self.chats[idx].title = reply;
 
                                 let minor_text = format!("{:.15}...", self.input.text());
                                 self.chats[idx].minor_text.push_str(minor_text.as_str());
