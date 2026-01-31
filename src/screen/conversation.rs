@@ -26,6 +26,7 @@ const CHAT_FONT: Font = Font::with_name("chat-icons");
 const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
 const NR_WORDS_FOR_TITLE: usize = 3;
+const TITLE_GEN_PROMPT: &str = "Summarize this text with two short words.";
 
 pub struct Conversation {
     status: ModelStatus,
@@ -204,7 +205,6 @@ impl Conversation {
             Message::SubmitMessage => {
                 if !self.input.text().trim().is_empty() {
                     let model_tx = self.model_tx.clone();
-                    let title_gen = "Summarize this text with two short words.";
 
                     if let Some(id) = self.current_chat_id {
                         if let Some(idx) = self.chats.iter().position(|x| x.id == id) {
@@ -218,7 +218,8 @@ impl Conversation {
                             };
 
                             if self.chats[idx].title.is_empty() {
-                                let prompt = format!("{} \"{}\"", title_gen, self.input.text());
+                                let prompt =
+                                    format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
                                 let reply = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
                                 self.chats[idx].title.push_str(reply.as_str());
 
@@ -239,7 +240,7 @@ impl Conversation {
                             is_reply: false,
                         };
 
-                        let prompt = format!("{} \"{}\"", title_gen, self.input.text());
+                        let prompt = format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
                         let title = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
 
                         self.chats.push(Chat {
