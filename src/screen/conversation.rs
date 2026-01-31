@@ -25,6 +25,7 @@ use std::thread;
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
+const NR_WORDS_FOR_TITLE: usize = 3;
 
 pub struct Conversation {
     status: ModelStatus,
@@ -153,7 +154,7 @@ impl Conversation {
                 let uuid = Uuid::new_v4();
                 let chat = Chat {
                     id: uuid,
-                    title: format!("Chat {:.8}", uuid.to_string()),
+                    title: String::new(),
                     minor_text: String::new(),
                     messages: Vec::new(),
                 };
@@ -202,6 +203,9 @@ impl Conversation {
             }
             Message::SubmitMessage => {
                 if !self.input.text().trim().is_empty() {
+                    let model_tx = self.model_tx.clone();
+                    let title_gen = "Summarize this text with two short words.";
+
                     if let Some(id) = self.current_chat_id {
                         if let Some(idx) = self.chats.iter().position(|x| x.id == id) {
                             let msg_id = self.chats[idx].messages.len() + 1;
@@ -212,6 +216,16 @@ impl Conversation {
                                 markdown: markdown::Content::parse(self.input.text().as_str()),
                                 is_reply: false,
                             };
+
+                            if self.chats[idx].title.is_empty() {
+                                let prompt = format!("{} \"{}\"", title_gen, self.input.text());
+                                let reply = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
+                                self.chats[idx].title.push_str(reply.as_str());
+
+                                let minor_text = format!("{:.15}...", self.input.text());
+                                self.chats[idx].minor_text.push_str(minor_text.as_str());
+                            }
+
                             self.chats[idx].messages.push(message);
                         }
                     } else {
@@ -224,9 +238,13 @@ impl Conversation {
                             markdown: markdown::Content::parse(self.input.text().as_str()),
                             is_reply: false,
                         };
+
+                        let prompt = format!("{} \"{}\"", title_gen, self.input.text());
+                        let title = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
+
                         self.chats.push(Chat {
                             id,
-                            title: format!("Chat {:.8}", id.to_string()),
+                            title: title,
                             minor_text: format!("{:.15}...", self.input.text()),
                             messages: vec![message],
                         });
@@ -236,7 +254,6 @@ impl Conversation {
                     let input = self.input.text().clone();
                     self.input = text_editor::Content::new();
 
-                    let model_tx = self.model_tx.clone();
                     return Action::Run(Task::stream(generate_reply_with_worker(model_tx, input)));
                 }
                 return Action::None;
@@ -545,6 +562,39 @@ impl Conversation {
         .on_press(Message::DialogCancelDeleteChat)
         .into()
     }
+}
+
+fn generate_reply(
+    model_tx: &mpsc::Sender<GenerationRequest>,
+    input: String,
+    max_len: usize,
+) -> String {
+    let (response_tx, response_rx) = mpsc::channel();
+    let request = GenerationRequest { input, response_tx };
+    if model_tx.send(request).is_err() {
+        return String::from("Error");
+    }
+
+    let mut nr_tokens = 0;
+    let mut reply = String::new();
+    while let Ok(chatting) = response_rx.recv() {
+        match chatting {
+            Chatting::Token(tok) => {
+                nr_tokens += 1;
+                reply.push_str(tok.as_str());
+                if nr_tokens == max_len {
+                    break;
+                }
+            }
+            Chatting::Complete => {
+                break;
+            }
+            Chatting::Error(e) => {
+                return e.to_string();
+            }
+        }
+    }
+    reply
 }
 
 fn generate_reply_with_worker(
