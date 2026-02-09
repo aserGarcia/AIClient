@@ -3,13 +3,13 @@ use async_openai::{
     config::OpenAIConfig,
     traits::RequestOptionsBuilder,
     types::chat::{
-        ChatCompletionRequestAssistantMessage as AssistantMessage,
         ChatCompletionRequestSystemMessage as SystemMessage,
         ChatCompletionRequestUserMessage as UserMessage,
-        CreateChatCompletionRequestArgs as CreateRequestArgs,
+        CreateChatCompletionRequestArgs as CreateChatRequestArgs,
     },
 };
 use convo_core::assistant::LlamaCpp;
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() {
@@ -23,23 +23,33 @@ async fn main() {
             let config = OpenAIConfig::new().with_api_base(llamacpp.url());
             let client = Client::with_config(config);
 
-            let request = CreateRequestArgs::default()
+            let request = CreateChatRequestArgs::default()
                 .model("microsoft/Phi-3-mini-4k-instruct-gguf:Phi-3-mini-4k-instruct-q4.gguf")
                 .messages([
                     SystemMessage::from("You are a helpful assistant.").into(),
                     UserMessage::from("Write a poem about programming").into(),
                 ])
+                .n(1)
+                .stream(true)
                 .build()
                 .expect("Unable to uild request args");
 
-            let response = client.chat().create(request).await.expect("chat not work");
+            let mut stream = client
+                .chat()
+                .create_stream(request)
+                .await
+                .expect("chat not work");
 
             println!("\nResponse:\n");
-            for choice in response.choices {
-                println!(
-                    "{}: Role: {}  Content: {:?}",
-                    choice.index, choice.message.role, choice.message.content
-                );
+            while let Some(resp) = stream.next().await {
+                match resp {
+                    Ok(ccr) => ccr.choices.iter().for_each(|c| {
+                        if let Some(content) = c.delta.content.as_ref() {
+                            print!("{}", content);
+                        }
+                    }),
+                    Err(e) => println!("Error: {}", e),
+                }
             }
 
             // let json_data = r#"{"prompt": "Write a short poem about programming."}"#;

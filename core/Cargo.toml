@@ -4,14 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-async-openai = { version = "0.32.4", features = ["chat-completion", "file", "image", "realtime", "types"] }
+async-openai = { version = "0.32.4", features = ["chat-completion", "completion-types", "completions", "file", "image", "realtime", "types"] }
 directories = "6.0.0" 
+futures = "0.3.31"
 iced = { version = "0.14.0", features = ["markdown"] }
 reqwest = "0.13.1"
 rusqlite = { version = "0.38.0", features = ["bundled"] }
 thiserror = "2.0.18"
 tokenizers = "0.22.2"
 tokio = { version = "1.49.0", features = ["macros", "process", "rt", "rt-multi-thread"] }
+tokio-stream = "0.1.18"
 tokio-tungstenite = "0.28.0"
 tracing = "0.1.44"
 tracing-subscriber = "0.3.22"
