@@ -1,4 +1,6 @@
 use crate::{MODEL_NAME, MODEL_REPO_PATH, directory};
+use async_openai::Client;
+use async_openai::config::{Config, OpenAIConfig};
 use reqwest;
 use std::process::Stdio;
 use thiserror::Error;
@@ -6,15 +8,13 @@ use tokio::process;
 use tokio::time::{self, Duration};
 use tracing::{debug, error};
 
-const BATCH_SIZE: usize = 512;
-const MODEL_CONTEXT_SIZE: usize = 4096;
+const PORT: usize = 8081;
+const HOST: &str = "127.0.0.1";
 
 #[derive(Debug)]
 pub struct LlamaCpp {
-    model: String,
-    host: String,
-    port: usize,
     process: process::Child,
+    pub client: Client<OpenAIConfig>,
 }
 
 #[derive(Error, Debug)]
@@ -35,21 +35,20 @@ pub enum Chatting {
 
 impl LlamaCpp {
     pub fn url(&self) -> String {
-        format!("http://{}:{}", self.host, self.port)
+        self.client.config().url("")
     }
 
     pub async fn boot() -> Result<LlamaCpp, LlmError> {
         // TODO: switch based off backed and OS
         let executable = "./servers/llama-cpu-ubuntu-x64/llama-server";
-        let port = 8081;
-        let host = "127.0.0.1";
+        debug!("Starting child process");
         let child_process = process::Command::new(executable)
             .args(
                 format!(
                     "-hf {model_repo} --host {host} --port {port}",
                     model_repo = MODEL_REPO_PATH,
-                    host = host,
-                    port = port
+                    host = HOST,
+                    port = PORT
                 )
                 .split_whitespace(),
             )
@@ -60,10 +59,11 @@ impl LlamaCpp {
             .spawn()
             .map_err(|e| LlmError::LoadError(e.to_string()))?;
 
+        let config = OpenAIConfig::new().with_api_base(format!("http://{}:{}", HOST, PORT));
+        let client = Client::with_config(config);
+
         Ok(LlamaCpp {
-            model: MODEL_NAME.to_string(),
-            host: host.to_string(),
-            port: port,
+            client: client,
             process: child_process,
         })
     }

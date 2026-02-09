@@ -10,6 +10,7 @@ use async_openai::{
 };
 use convo_core::assistant::LlamaCpp;
 use futures::StreamExt;
+use std::io::Write;
 
 #[tokio::main]
 async fn main() {
@@ -19,9 +20,6 @@ async fn main() {
             if let Err(res) = llamacpp.wait_until_ready().await {
                 println!("{}", res);
             }
-
-            let config = OpenAIConfig::new().with_api_base(llamacpp.url());
-            let client = Client::with_config(config);
 
             let request = CreateChatRequestArgs::default()
                 .model("microsoft/Phi-3-mini-4k-instruct-gguf:Phi-3-mini-4k-instruct-q4.gguf")
@@ -34,7 +32,8 @@ async fn main() {
                 .build()
                 .expect("Unable to uild request args");
 
-            let mut stream = client
+            let mut stream = llamacpp
+                .client
                 .chat()
                 .create_stream(request)
                 .await
@@ -43,11 +42,12 @@ async fn main() {
             println!("\nResponse:\n");
             while let Some(resp) = stream.next().await {
                 match resp {
-                    Ok(ccr) => ccr.choices.iter().for_each(|c| {
-                        if let Some(content) = c.delta.content.as_ref() {
+                    Ok(ccr) => {
+                        if let Some(content) = ccr.choices[0].delta.content.as_ref() {
                             print!("{}", content);
+                            std::io::stdout().flush().unwrap();
                         }
-                    }),
+                    }
                     Err(e) => println!("Error: {}", e),
                 }
             }
