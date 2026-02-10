@@ -1,7 +1,11 @@
 use crate::{MODEL_NAME, MODEL_REPO_PATH, directory};
 use async_openai::Client;
 use async_openai::config::{Config, OpenAIConfig};
-use reqwest;
+use async_openai::types::chat::{
+    ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
+};
+use futures::StreamExt;
+use sipper::{Sipper, sipper};
 use std::process::Stdio;
 use thiserror::Error;
 use tokio::process;
@@ -15,6 +19,7 @@ const HOST: &str = "127.0.0.1";
 pub struct LlamaCpp {
     process: process::Child,
     pub client: Client<OpenAIConfig>,
+    pub chat_completion_request: CreateChatCompletionRequest,
 }
 
 #[derive(Error, Debug)]
@@ -62,9 +67,18 @@ impl LlamaCpp {
         let config = OpenAIConfig::new().with_api_base(format!("http://{}:{}", HOST, PORT));
         let client = Client::with_config(config);
 
+        let request = CreateChatCompletionRequestArgs::default()
+            .model("microsoft/Phi-3-mini-4k-instruct-gguf:Phi-3-mini-4k-instruct-q4.gguf")
+            .n(1)
+            .stream(true)
+            .seed(424242)
+            .build()
+            .map_err(|e| LlmError::LoadError(e.to_string()))?;
+
         Ok(LlamaCpp {
-            client: client,
             process: child_process,
+            client: client,
+            chat_completion_request: request,
         })
     }
 
@@ -94,5 +108,38 @@ impl LlamaCpp {
         }
 
         Ok(())
+    }
+
+    pub fn stream_response<T>(
+        &mut self,
+        messages: Vec<ChatCompletionRequestMessage>,
+    ) -> impl Sipper<T, T>
+    where
+        T: From<String>,
+    {
+        self.chat_completion_request.messages = messages;
+
+        sipper(|mut sender| async move {
+            let mut stream = self
+                .client
+                .chat()
+                .create_stream(self.chat_completion_request.clone())
+                .await
+                .expect("Stream not created");
+
+            while let Some(resp) = stream.next().await {
+                match resp {
+                    Ok(ccr) => {
+                        if let Some(content) = ccr.choices[0].delta.content.as_ref() {
+                            sender.send(T::from(content.to_owned())).await;
+                        }
+                    }
+                    Err(e) => {
+                        sender.send(T::from(e.to_string())).await;
+                    }
+                }
+            }
+            T::from(String::from("Done"))
+        })
     }
 }
