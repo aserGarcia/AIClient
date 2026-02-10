@@ -47,9 +47,9 @@ impl LlamaCpp {
         self.client.config().url("")
     }
 
-    pub async fn boot() -> Result<LlamaCpp, LlmError> {
+    pub fn boot() -> Result<LlamaCpp, LlmError> {
         // TODO: switch based off backed and OS
-        let executable = "./servers/llama-cpu-ubuntu-x64/llama-server";
+        let executable = "./core/servers/llama-cpu-ubuntu-x64/llama-server";
         debug!("Starting child process");
         let child_process = process::Command::new(executable)
             .args(
@@ -114,7 +114,7 @@ impl LlamaCpp {
         Ok(())
     }
 
-    pub fn stream_response<T>(&mut self, messages: Vec<ChatMessage>) -> impl Sipper<T, T>
+    pub fn stream_response<T>(&mut self, messages: Vec<(String, bool)>) -> impl Sipper<T, T>
     where
         T: From<String>,
     {
@@ -122,10 +122,10 @@ impl LlamaCpp {
             vec![SystemMessage::from("You are a helpful assistant.").into()];
 
         chat_completion_messages.extend(messages.iter().map(|m| {
-            if m.is_reply {
-                AssistantMessage::from(m.content.clone()).into()
+            if m.1 {
+                AssistantMessage::from(m.0.clone()).into()
             } else {
-                UserMessage::from(m.content.clone()).into()
+                UserMessage::from(m.0.clone()).into()
             }
         }));
 

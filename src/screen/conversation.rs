@@ -10,11 +10,13 @@ use iced_dialog::dialog;
 use thiserror::Error;
 use uuid::Uuid;
 
+use std::sync::Arc;
+use tokio::{runtime, sync::Mutex};
 use tracing::{debug, error};
 
 use crate::styles::{styles, viewers};
 use convo_core::{
-    assistant::{Chatting, GenerationRequest, LlamaCpp},
+    assistant::{Chatting, LlamaCpp},
     chat::{Chat, ChatMessage, Reply},
     db,
 };
@@ -29,8 +31,8 @@ const NR_WORDS_FOR_TITLE: usize = 3;
 const TITLE_GEN_PROMPT: &str = "Summarize this text with three words.";
 
 pub struct Conversation {
-    status: ModelStatus,
-    model_tx: mpsc::Sender<GenerationRequest>,
+    server: Option<Arc<Mutex<LlamaCpp>>>,
+    server_ready: bool,
     input: text_editor::Content,
     replying_string: Reply,
     chats: Vec<Chat>,
@@ -42,7 +44,7 @@ pub struct Conversation {
 
 #[derive(Clone)]
 pub enum Message {
-    Initialize,
+    Initialize(Status),
     FocusInput,
     Markdown(viewers::Interaction),
     NewChat,
@@ -56,12 +58,18 @@ pub enum Message {
     AutoSave,
 }
 
-struct ModelStatus {
-    rx: mpsc::Receiver<Result<(), String>>,
-    status: Status,
+impl From<String> for Message {
+    fn from(content: String) -> Message {
+        Message::ReplyMode(Chatting::Token(content))
+    }
 }
 
-#[derive(PartialEq)]
+// struct ModelStatus {
+//     rx: mpsc::Receiver<Result<(), String>>,
+//     status: Status,
+// }
+//
+#[derive(PartialEq, Clone)]
 enum Status {
     Loading,
     Loaded,
@@ -85,39 +93,15 @@ impl Conversation {
         let db = db::Database::new().map_err(|e| ConversationError::Loading(e.to_string()))?;
         debug!("db loaded");
 
-        let (model_tx, model_rx) = mpsc::channel::<GenerationRequest>();
-        let (ready_tx, ready_rx) = mpsc::sync_channel::<Result<(), String>>(1);
-
         let chats = db
             .load_chats()
             .map_err(|e| ConversationError::Loading(e.to_string()))?;
         debug!("chats loaded {}", chats.len());
 
-        debug!("Loading model");
-        thread::spawn(move || {
-            let mut model = match LlamaCpp::load() {
-                Ok(m) => {
-                    let _ = ready_tx.send(Ok(()));
-                    m
-                }
-                Err(e) => {
-                    error!("Failed to load model: {}", e);
-                    let _ = ready_tx.send(Err(e.to_string()));
-                    return;
-                }
-            };
-            while let Ok(request) = model_rx.recv() {
-                model.process_generation(request)
-            }
-        });
-
         Ok((
             Self {
-                status: ModelStatus {
-                    rx: ready_rx,
-                    status: Status::Loading,
-                },
-                model_tx,
+                server: None,
+                server_ready: false,
                 input: text_editor::Content::new(),
                 replying_string: Reply {
                     content: String::new(),
@@ -129,19 +113,44 @@ impl Conversation {
                 dialog_delete_chat: None,
                 current_chat_id: None,
             },
-            Task::done(Message::Initialize),
+            Task::done(Message::Initialize(Status::Loading)),
         ))
     }
 
     pub fn update(&mut self, message: Message) -> Action {
         match message {
-            Message::Initialize => match &self.status.rx.recv() {
-                Ok(Ok(())) => {
-                    self.status.status = Status::Loaded;
+            Message::Initialize(status) => match status {
+                Status::Loading => {
+                    debug!("Starting server");
+                    let server = match LlamaCpp::boot() {
+                        Ok(llama) => llama,
+                        Err(e) => {
+                            return Action::Error(e.to_string());
+                        }
+                    };
+                    let server = Arc::new(Mutex::new(server));
+                    self.server = Some(Arc::clone(&server));
+
+                    debug!("Awaiting server");
+                    let wait_task = Task::perform(
+                        async move {
+                            let mut s = server.lock().await;
+                            match s.wait_until_ready().await {
+                                Ok(_) => Message::Initialize(Status::Loaded),
+                                Err(e) => {
+                                    error!("Server failed to become ready: {}", e);
+                                    Message::Initialize(Status::Loaded)
+                                }
+                            }
+                        },
+                        |msg| msg,
+                    );
+                    return Action::Run(wait_task);
+                }
+                Status::Loaded => {
+                    self.server_ready = true;
                     return Action::Run(Task::done(Message::FocusInput));
                 }
-                Ok(Err(e)) => return Action::Error(e.to_string()),
-                Err(e) => return Action::Error(e.to_string()),
             },
             Message::Markdown(interaction) => {
                 return Action::Run(interaction.perform());
@@ -204,7 +213,7 @@ impl Conversation {
             }
             Message::SubmitMessage => {
                 if !self.input.text().trim().is_empty() {
-                    let model_tx = self.model_tx.clone();
+                    //let model_tx = self.model_tx.clone();
 
                     if let Some(id) = self.current_chat_id {
                         if let Some(idx) = self.chats.iter().position(|x| x.id == id) {
@@ -218,10 +227,10 @@ impl Conversation {
                             };
 
                             if self.chats[idx].minor_text.is_empty() {
-                                let prompt =
-                                    format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
-                                let reply = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
-                                self.chats[idx].title = reply;
+                                // let prompt =
+                                //     format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
+                                // let reply = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
+                                self.chats[idx].title = "TEST".to_string();
 
                                 let minor_text = format!("{:.15}...", self.input.text());
                                 self.chats[idx].minor_text.push_str(minor_text.as_str());
@@ -241,7 +250,7 @@ impl Conversation {
                         };
 
                         let prompt = format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
-                        let title = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
+                        let title = "TEST".to_string(); //generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
 
                         self.chats.push(Chat {
                             id,
@@ -251,11 +260,27 @@ impl Conversation {
                         });
                     }
 
-                    self.db.needs_save = true;
-                    let input = self.input.text().clone();
                     self.input = text_editor::Content::new();
+                    let chat_idx = self
+                        .chats
+                        .iter()
+                        .position(|x| x.id == self.current_chat_id.unwrap())
+                        .unwrap();
 
-                    return Action::Run(Task::stream(generate_reply_with_worker(model_tx, input)));
+                    let len = self.chats[chat_idx].messages.len();
+                    let start = std::cmp::min(len, 3);
+                    let messages: Vec<(String, bool)> = self.chats[chat_idx].messages[start..]
+                        .iter()
+                        .map(|m| (m.content.clone(), m.is_reply))
+                        .collect();
+
+                    if let Some(server) = &self.server {
+                        let server = Arc::clone(server);
+                        return Action::Run(Task::stream(reply_stream(server, messages)));
+                    } else {
+                        error!("Server not initialized");
+                        return Action::Error("Server not initialized".to_string());
+                    }
                 }
                 return Action::None;
             }
@@ -313,21 +338,21 @@ impl Conversation {
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
-        if self.status.status == Status::Loading {
-            let page = container(column![
-                text("Convo")
-                    .color(styles::text_color())
-                    .font(MOOLI)
-                    .size(64),
-                Space::new().height(10.0)
-            ])
-            .center(Length::Fill)
-            .style(|_theme: &Theme| container::Style {
-                background: Some(styles::background_color().into()),
-                ..Default::default()
-            });
-            return page.into();
-        }
+        // if self.status.status == Status::Loading {
+        //     let page = container(column![
+        //         text("Convo")
+        //             .color(styles::text_color())
+        //             .font(MOOLI)
+        //             .size(64),
+        //         Space::new().height(10.0)
+        //     ])
+        //     .center(Length::Fill)
+        //     .style(|_theme: &Theme| container::Style {
+        //         background: Some(styles::background_color().into()),
+        //         ..Default::default()
+        //     });
+        //     return page.into();
+        // }
         //
         // Sidebar Widgets
         //
@@ -565,60 +590,77 @@ impl Conversation {
     }
 }
 
-fn generate_reply(
-    model_tx: &mpsc::Sender<GenerationRequest>,
-    input: String,
-    max_len: usize,
-) -> String {
-    let (response_tx, response_rx) = mpsc::channel();
-    let request = GenerationRequest { input, response_tx };
-    if model_tx.send(request).is_err() {
-        return String::from("Error");
-    }
-
-    let mut nr_tokens = 0;
-    let mut reply = String::new();
-    while let Ok(chatting) = response_rx.recv() {
-        match chatting {
-            Chatting::Token(tok) => {
-                nr_tokens += 1;
-                reply.push_str(tok.as_str());
-                if nr_tokens == max_len {
-                    break;
-                }
-            }
-            Chatting::Complete => {
-                break;
-            }
-            Chatting::Error(e) => {
-                return e.to_string();
-            }
-        }
-    }
-    reply
-}
-
-fn generate_reply_with_worker(
-    model_tx: mpsc::Sender<GenerationRequest>,
-    input: String,
+fn reply_stream(
+    server: Arc<Mutex<LlamaCpp>>,
+    messages: Vec<(String, bool)>,
 ) -> impl Sipper<Message, Message> {
     sipper(move |mut sender| async move {
-        let (response_tx, response_rx) = mpsc::channel();
-
-        let request = GenerationRequest { input, response_tx };
-
-        if model_tx.send(request).is_err() {
-            return Message::ReplyMode(Chatting::Error("Model worker died".to_string()));
+        let mut server = server.lock().await;
+        let mut stream = server.stream_response::<String>(messages).pin();
+        while let Some(token) = stream.sip().await {
+            sender
+                .send(Message::ReplyMode(Chatting::Token(token)))
+                .await
         }
-
-        while let Ok(chatting) = response_rx.recv() {
-            let is_complete = chatting == Chatting::Complete;
-            let _ = sender.send(Message::ReplyMode(chatting)).await;
-            if is_complete {
-                break;
-            }
-        }
-
+        sender.send(Message::ReplyMode(Chatting::Complete)).await;
         Message::ReplyMode(Chatting::Complete)
     })
 }
+
+// fn generate_reply(
+//     model_tx: &mpsc::Sender<GenerationRequest>,
+//     input: String,
+//     max_len: usize,
+// ) -> String {
+//     let (response_tx, response_rx) = mpsc::channel();
+//     let request = GenerationRequest { input, response_tx };
+//     if model_tx.send(request).is_err() {
+//         return String::from("Error");
+//     }
+//
+//     let mut nr_tokens = 0;
+//     let mut reply = String::new();
+//     while let Ok(chatting) = response_rx.recv() {
+//         match chatting {
+//             Chatting::Token(tok) => {
+//                 nr_tokens += 1;
+//                 reply.push_str(tok.as_str());
+//                 if nr_tokens == max_len {
+//                     break;
+//                 }
+//             }
+//             Chatting::Complete => {
+//                 break;
+//             }
+//             Chatting::Error(e) => {
+//                 return e.to_string();
+//             }
+//         }
+//     }
+//     reply
+// }
+//
+// fn generate_reply_with_worker(
+//     model_tx: mpsc::Sender<GenerationRequest>,
+//     input: String,
+// ) -> impl Sipper<Message, Message> {
+//     sipper(move |mut sender| async move {
+//         let (response_tx, response_rx) = mpsc::channel();
+//
+//         let request = GenerationRequest { input, response_tx };
+//
+//         if model_tx.send(request).is_err() {
+//             return Message::ReplyMode(Chatting::Error("Model worker died".to_string()));
+//         }
+//
+//         while let Ok(chatting) = response_rx.recv() {
+//             let is_complete = chatting == Chatting::Complete;
+//             let _ = sender.send(Message::ReplyMode(chatting)).await;
+//             if is_complete {
+//                 break;
+//             }
+//         }
+//
+//         Message::ReplyMode(Chatting::Complete)
+//     })
+// }
