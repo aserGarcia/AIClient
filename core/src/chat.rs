@@ -20,3 +20,15 @@ pub struct Reply {
     pub content: String,
     pub markdown: markdown::Content,
 }
+
+impl Default for ChatMessage {
+    fn default() -> ChatMessage {
+        ChatMessage {
+            id: 0,
+            chat_id: Uuid::new_v4(),
+            content: String::new(),
+            markdown: markdown::Content::new(),
+            is_reply: false,
+        }
+    }
+}

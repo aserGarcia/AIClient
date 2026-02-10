@@ -1,8 +1,12 @@
+use crate::chat::ChatMessage;
 use crate::{MODEL_NAME, MODEL_REPO_PATH, directory};
 use async_openai::Client;
 use async_openai::config::{Config, OpenAIConfig};
 use async_openai::types::chat::{
-    ChatCompletionRequestMessage, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
+    ChatCompletionRequestAssistantMessage as AssistantMessage, ChatCompletionRequestMessage,
+    ChatCompletionRequestSystemMessage as SystemMessage,
+    ChatCompletionRequestUserMessage as UserMessage, CreateChatCompletionRequest,
+    CreateChatCompletionRequestArgs,
 };
 use futures::StreamExt;
 use sipper::{Sipper, sipper};
@@ -110,14 +114,22 @@ impl LlamaCpp {
         Ok(())
     }
 
-    pub fn stream_response<T>(
-        &mut self,
-        messages: Vec<ChatCompletionRequestMessage>,
-    ) -> impl Sipper<T, T>
+    pub fn stream_response<T>(&mut self, messages: Vec<ChatMessage>) -> impl Sipper<T, T>
     where
         T: From<String>,
     {
-        self.chat_completion_request.messages = messages;
+        let mut chat_completion_messages: Vec<ChatCompletionRequestMessage> =
+            vec![SystemMessage::from("You are a helpful assistant.").into()];
+
+        chat_completion_messages.extend(messages.iter().map(|m| {
+            if m.is_reply {
+                AssistantMessage::from(m.content.clone()).into()
+            } else {
+                UserMessage::from(m.content.clone()).into()
+            }
+        }));
+
+        self.chat_completion_request.messages = chat_completion_messages;
 
         sipper(|mut sender| async move {
             let mut stream = self

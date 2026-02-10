@@ -1,8 +1,4 @@
-use async_openai::types::chat::{
-    ChatCompletionRequestMessage, ChatCompletionRequestSystemMessage as SystemMessage,
-    ChatCompletionRequestUserMessage as UserMessage,
-};
-use convo_core::assistant::LlamaCpp;
+use convo_core::{assistant::LlamaCpp, chat::ChatMessage};
 use sipper::Sipper;
 use std::io::Write;
 
@@ -15,10 +11,12 @@ async fn main() {
                 println!("{}", res);
             }
 
-            let messages: Vec<ChatCompletionRequestMessage> = vec![
-                SystemMessage::from("You are a helpful assistant.").into(),
-                UserMessage::from("Write a poem about programming").into(),
-            ];
+            let messages = vec![ChatMessage {
+                id: 0,
+                content: "Write a poem about programming.".to_string(),
+                is_reply: false,
+                ..Default::default()
+            }];
 
             let mut stream = llamacpp.stream_response::<String>(messages).pin();
             while let Some(token) = stream.sip().await {
