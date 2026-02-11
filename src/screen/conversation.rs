@@ -1,3 +1,4 @@
+use convo_core::chat::CompletionMessage;
 use iced::alignment::{Horizontal, Vertical};
 use iced::task::{Sipper, sipper};
 use iced::widget::{
@@ -11,7 +12,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use std::sync::Arc;
-use tokio::{runtime, sync::Mutex};
+use tokio::sync::Mutex;
 use tracing::{debug, error};
 
 use crate::styles::{styles, viewers};
@@ -21,14 +22,9 @@ use convo_core::{
     db,
 };
 
-use std::sync::mpsc;
-use std::thread;
-
 const CHAT_FONT: Font = Font::with_name("chat-icons");
 const MOOLI: Font = Font::with_name("Mooli");
 const NOTO_SANS: Font = Font::with_name("Noto Sans");
-const NR_WORDS_FOR_TITLE: usize = 3;
-const TITLE_GEN_PROMPT: &str = "Summarize this text with three words.";
 
 pub struct Conversation {
     server: Option<Arc<Mutex<LlamaCpp>>>,
@@ -58,21 +54,11 @@ pub enum Message {
     AutoSave,
 }
 
-impl From<String> for Message {
-    fn from(content: String) -> Message {
-        Message::ReplyMode(Chatting::Token(content))
-    }
-}
-
-// struct ModelStatus {
-//     rx: mpsc::Receiver<Result<(), String>>,
-//     status: Status,
-// }
-//
 #[derive(PartialEq, Clone)]
-enum Status {
+pub enum Status {
     Loading,
     Loaded,
+    Error(String),
 }
 
 pub enum Action {
@@ -139,7 +125,7 @@ impl Conversation {
                                 Ok(_) => Message::Initialize(Status::Loaded),
                                 Err(e) => {
                                     error!("Server failed to become ready: {}", e);
-                                    Message::Initialize(Status::Loaded)
+                                    Message::Initialize(Status::Error(e.to_string()))
                                 }
                             }
                         },
@@ -150,6 +136,9 @@ impl Conversation {
                 Status::Loaded => {
                     self.server_ready = true;
                     return Action::Run(Task::done(Message::FocusInput));
+                }
+                Status::Error(e) => {
+                    return Action::Error(e);
                 }
             },
             Message::Markdown(interaction) => {
@@ -164,8 +153,7 @@ impl Conversation {
                 let uuid = Uuid::new_v4();
                 let chat = Chat {
                     id: uuid,
-                    title: String::from("New Chat"),
-                    minor_text: String::new(),
+                    title: String::new(),
                     messages: Vec::new(),
                 };
                 self.current_chat_id = Some(uuid);
@@ -213,8 +201,6 @@ impl Conversation {
             }
             Message::SubmitMessage => {
                 if !self.input.text().trim().is_empty() {
-                    //let model_tx = self.model_tx.clone();
-
                     if let Some(id) = self.current_chat_id {
                         if let Some(idx) = self.chats.iter().position(|x| x.id == id) {
                             let msg_id = self.chats[idx].messages.len() + 1;
@@ -226,36 +212,27 @@ impl Conversation {
                                 is_reply: false,
                             };
 
-                            if self.chats[idx].minor_text.is_empty() {
-                                // let prompt =
-                                //     format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
-                                // let reply = generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
-                                self.chats[idx].title = "TEST".to_string();
-
-                                let minor_text = format!("{:.15}...", self.input.text());
-                                self.chats[idx].minor_text.push_str(minor_text.as_str());
+                            if self.chats[idx].title.is_empty() {
+                                let title = format!("{:.15}...", self.input.text());
+                                self.chats[idx].title.push_str(title.as_str());
                             }
 
                             self.chats[idx].messages.push(message);
                         }
                     } else {
-                        let id = Uuid::new_v4();
-                        self.current_chat_id = Some(id);
+                        let chat_id = Uuid::new_v4();
+                        self.current_chat_id = Some(chat_id);
                         let message = ChatMessage {
                             id: 0,
-                            chat_id: id,
+                            chat_id: chat_id,
                             content: self.input.text(),
                             markdown: markdown::Content::parse(self.input.text().as_str()),
                             is_reply: false,
                         };
 
-                        let prompt = format!("{} \"{}\"", TITLE_GEN_PROMPT, self.input.text());
-                        let title = "TEST".to_string(); //generate_reply(&model_tx, prompt, NR_WORDS_FOR_TITLE);
-
                         self.chats.push(Chat {
-                            id,
-                            title: title,
-                            minor_text: format!("{:.15}...", self.input.text()),
+                            id: chat_id,
+                            title: format!("{:.15}...", self.input.text()),
                             messages: vec![message],
                         });
                     }
@@ -268,10 +245,13 @@ impl Conversation {
                         .unwrap();
 
                     let len = self.chats[chat_idx].messages.len();
-                    let start = std::cmp::min(len, 3);
-                    let messages: Vec<(String, bool)> = self.chats[chat_idx].messages[start..]
+                    let start = std::cmp::min(len - 1, 3);
+                    let messages: Vec<CompletionMessage> = self.chats[chat_idx].messages[start..]
                         .iter()
-                        .map(|m| (m.content.clone(), m.is_reply))
+                        .map(|m| CompletionMessage {
+                            content: m.content.clone(),
+                            is_reply: m.is_reply,
+                        })
                         .collect();
 
                     if let Some(server) = &self.server {
@@ -338,21 +318,21 @@ impl Conversation {
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
-        // if self.status.status == Status::Loading {
-        //     let page = container(column![
-        //         text("Convo")
-        //             .color(styles::text_color())
-        //             .font(MOOLI)
-        //             .size(64),
-        //         Space::new().height(10.0)
-        //     ])
-        //     .center(Length::Fill)
-        //     .style(|_theme: &Theme| container::Style {
-        //         background: Some(styles::background_color().into()),
-        //         ..Default::default()
-        //     });
-        //     return page.into();
-        // }
+        if !self.server_ready {
+            let page = container(column![
+                text("Convo")
+                    .color(styles::text_color())
+                    .font(MOOLI)
+                    .size(64),
+                Space::new().height(10.0)
+            ])
+            .center(Length::Fill)
+            .style(|_theme: &Theme| container::Style {
+                background: Some(styles::background_color().into()),
+                ..Default::default()
+            });
+            return page.into();
+        }
         //
         // Sidebar Widgets
         //
@@ -372,11 +352,9 @@ impl Conversation {
                 .on_press(Message::DialogDeleteChat(chat.id))
                 .style(styles::delete_chat_button);
 
-                let mut chat_button = button(container(column![
-                    text(chat.title.clone()).font(NOTO_SANS).size(16),
-                    text(chat.minor_text.clone()).font(NOTO_SANS).size(12)
-                ]))
-                .on_press(Message::OpenChat(chat.id));
+                let mut chat_button =
+                    button(container(text(chat.title.clone()).font(NOTO_SANS).size(16)))
+                        .on_press(Message::OpenChat(chat.id));
 
                 chat_button = if Some(chat.id) == self.current_chat_id {
                     chat_button.style(styles::chat_selected)
@@ -467,12 +445,15 @@ impl Conversation {
                     .collect();
 
                 if !self.replying_string.content.is_empty() {
-                    let text = markdown::view_with(
-                        self.replying_string.markdown.items(),
-                        Theme::GruvboxLight,
-                        &viewers::MarkdownViewer {},
+                    let text = container(
+                        markdown::view_with(
+                            self.replying_string.markdown.items(),
+                            Theme::GruvboxLight,
+                            &viewers::MarkdownViewer {},
+                        )
+                        .map(|event| Message::Markdown(event)),
                     )
-                    .map(|event| Message::Markdown(event));
+                    .padding(10);
                     messages.push(text.into())
                 }
 
@@ -592,7 +573,7 @@ impl Conversation {
 
 fn reply_stream(
     server: Arc<Mutex<LlamaCpp>>,
-    messages: Vec<(String, bool)>,
+    messages: Vec<CompletionMessage>,
 ) -> impl Sipper<Message, Message> {
     sipper(move |mut sender| async move {
         let mut server = server.lock().await;
@@ -606,61 +587,3 @@ fn reply_stream(
         Message::ReplyMode(Chatting::Complete)
     })
 }
-
-// fn generate_reply(
-//     model_tx: &mpsc::Sender<GenerationRequest>,
-//     input: String,
-//     max_len: usize,
-// ) -> String {
-//     let (response_tx, response_rx) = mpsc::channel();
-//     let request = GenerationRequest { input, response_tx };
-//     if model_tx.send(request).is_err() {
-//         return String::from("Error");
-//     }
-//
-//     let mut nr_tokens = 0;
-//     let mut reply = String::new();
-//     while let Ok(chatting) = response_rx.recv() {
-//         match chatting {
-//             Chatting::Token(tok) => {
-//                 nr_tokens += 1;
-//                 reply.push_str(tok.as_str());
-//                 if nr_tokens == max_len {
-//                     break;
-//                 }
-//             }
-//             Chatting::Complete => {
-//                 break;
-//             }
-//             Chatting::Error(e) => {
-//                 return e.to_string();
-//             }
-//         }
-//     }
-//     reply
-// }
-//
-// fn generate_reply_with_worker(
-//     model_tx: mpsc::Sender<GenerationRequest>,
-//     input: String,
-// ) -> impl Sipper<Message, Message> {
-//     sipper(move |mut sender| async move {
-//         let (response_tx, response_rx) = mpsc::channel();
-//
-//         let request = GenerationRequest { input, response_tx };
-//
-//         if model_tx.send(request).is_err() {
-//             return Message::ReplyMode(Chatting::Error("Model worker died".to_string()));
-//         }
-//
-//         while let Ok(chatting) = response_rx.recv() {
-//             let is_complete = chatting == Chatting::Complete;
-//             let _ = sender.send(Message::ReplyMode(chatting)).await;
-//             if is_complete {
-//                 break;
-//             }
-//         }
-//
-//         Message::ReplyMode(Chatting::Complete)
-//     })
-// }

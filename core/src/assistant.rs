@@ -1,5 +1,5 @@
-use crate::chat::ChatMessage;
-use crate::{MODEL_NAME, MODEL_REPO_PATH, directory};
+use crate::chat::CompletionMessage;
+use crate::{MODEL_REPO_PATH, SERVER_EXECUTABLE};
 use async_openai::Client;
 use async_openai::config::{Config, OpenAIConfig};
 use async_openai::types::chat::{
@@ -49,9 +49,8 @@ impl LlamaCpp {
 
     pub fn boot() -> Result<LlamaCpp, LlmError> {
         // TODO: switch based off backed and OS
-        let executable = "./core/servers/llama-cpu-ubuntu-x64/llama-server";
         debug!("Starting child process");
-        let child_process = process::Command::new(executable)
+        let child_process = process::Command::new(SERVER_EXECUTABLE)
             .args(
                 format!(
                     "-hf {model_repo} --host {host} --port {port}",
@@ -72,7 +71,7 @@ impl LlamaCpp {
         let client = Client::with_config(config);
 
         let request = CreateChatCompletionRequestArgs::default()
-            .model("microsoft/Phi-3-mini-4k-instruct-gguf:Phi-3-mini-4k-instruct-q4.gguf")
+            .model(MODEL_REPO_PATH)
             .n(1)
             .stream(true)
             .seed(424242)
@@ -114,7 +113,7 @@ impl LlamaCpp {
         Ok(())
     }
 
-    pub fn stream_response<T>(&mut self, messages: Vec<(String, bool)>) -> impl Sipper<T, T>
+    pub fn stream_response<T>(&mut self, messages: Vec<CompletionMessage>) -> impl Sipper<T, T>
     where
         T: From<String>,
     {
@@ -122,10 +121,10 @@ impl LlamaCpp {
             vec![SystemMessage::from("You are a helpful assistant.").into()];
 
         chat_completion_messages.extend(messages.iter().map(|m| {
-            if m.1 {
-                AssistantMessage::from(m.0.clone()).into()
+            if m.is_reply {
+                AssistantMessage::from(m.content.clone()).into()
             } else {
-                UserMessage::from(m.0.clone()).into()
+                UserMessage::from(m.content.clone()).into()
             }
         }));
 

@@ -77,15 +77,9 @@ impl Database {
             match messages {
                 Ok(m) => {
                     info!("Retrieved {} messages for chat {}", m.len(), chat_id);
-                    let minor_text = if m.len() > 0 {
-                        m[0].content.clone()
-                    } else {
-                        String::new()
-                    };
                     Ok(Chat {
                         id: chat_id,
                         title: row.get(1)?,
-                        minor_text: format!("{:.15}...", minor_text),
                         messages: m,
                     })
                 }
