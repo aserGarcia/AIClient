@@ -1,4 +1,4 @@
-use convo_core::{assistant::LlamaCpp, chat::ChatMessage};
+use convo_core::{assistant::LlamaCpp, chat::CompletionMessage};
 use sipper::Sipper;
 use std::io::Write;
 
@@ -11,7 +11,10 @@ async fn main() {
                 println!("{}", res);
             }
 
-            let messages = vec![("Write a poem about programming.".to_string(), false)];
+            let messages = vec![CompletionMessage {
+                content: "Write a poem about programming.".to_string(),
+                is_reply: false,
+            }];
 
             let mut stream = llamacpp.stream_response::<String>(messages).pin();
             while let Some(token) = stream.sip().await {

@@ -16,6 +16,7 @@ use tokio::process;
 use tokio::time::{self, Duration};
 use tracing::{debug, error};
 
+const MAX_CHARS: usize = 8000;
 const PORT: usize = 8081;
 const HOST: &str = "127.0.0.1";
 
@@ -53,7 +54,7 @@ impl LlamaCpp {
         let child_process = process::Command::new(SERVER_EXECUTABLE)
             .args(
                 format!(
-                    "-hf {model_repo} --host {host} --port {port}",
+                    "-hf {model_repo} --host {host} --port {port} --context-shift --parallel 1 --no-slots --kv-unified",
                     model_repo = MODEL_REPO_PATH,
                     host = HOST,
                     port = PORT
@@ -75,6 +76,7 @@ impl LlamaCpp {
             .n(1)
             .stream(true)
             .seed(424242)
+            .max_completion_tokens(2048u32)
             .build()
             .map_err(|e| LlmError::LoadError(e.to_string()))?;
 
@@ -117,10 +119,37 @@ impl LlamaCpp {
     where
         T: From<String>,
     {
-        let mut chat_completion_messages: Vec<ChatCompletionRequestMessage> =
-            vec![SystemMessage::from("You are a helpful assistant.").into()];
+        let mut chat_completion_messages: Vec<ChatCompletionRequestMessage> = vec![
+            SystemMessage::from(
+                "You are a helpful assistant. Make your answers short and concise.",
+            )
+            .into(),
+        ];
 
-        chat_completion_messages.extend(messages.iter().map(|m| {
+        let mut allowed_messages = Vec::<CompletionMessage>::new();
+        let mut char_count = 0;
+        for m in messages.iter().rev() {
+            let m_char_count = m.content.chars().count();
+            let total_char_count = char_count + m_char_count;
+            if total_char_count > MAX_CHARS {
+                let cutoff = MAX_CHARS - char_count;
+
+                let truncated_message = &m.content[m_char_count - cutoff..];
+                allowed_messages.push(CompletionMessage {
+                    content: truncated_message.to_string(),
+                    is_reply: m.is_reply,
+                });
+                break;
+            } else {
+                allowed_messages.push(CompletionMessage {
+                    content: m.content.clone(),
+                    is_reply: m.is_reply,
+                });
+                char_count += m_char_count;
+            }
+        }
+
+        chat_completion_messages.extend(allowed_messages.iter().rev().map(|m| {
             if m.is_reply {
                 AssistantMessage::from(m.content.clone()).into()
             } else {
