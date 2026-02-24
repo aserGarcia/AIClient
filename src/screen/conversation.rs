@@ -269,7 +269,7 @@ impl Conversation {
                     Chatting::Token(tok) => {
                         self.replying_string.content.push_str(tok.as_str());
                         self.replying_string.markdown.push_str(tok.as_str());
-                        return Action::Run(Task::done(Message::FocusInput));
+                        return Action::None;
                     }
                     Chatting::Complete => {
                         if let Some(id) = self.current_chat_id {
@@ -293,7 +293,7 @@ impl Conversation {
                         }
 
                         self.db.needs_save = true;
-                        return Action::Run(Task::done(Message::FocusInput));
+                        return Action::None;
                     }
                     Chatting::Error(e) => {
                         error!("Generation error: {e}");
@@ -319,13 +319,19 @@ impl Conversation {
 
     pub fn view(&self) -> iced::Element<'_, Message> {
         if !self.server_ready {
-            let page = container(column![
-                text("Convo")
-                    .color(styles::text_color())
-                    .font(MOOLI)
-                    .size(64),
-                Space::new().height(10.0)
-            ])
+            let page = container(
+                column![
+                    text("Convo")
+                        .color(styles::text_color())
+                        .font(MOOLI)
+                        .size(64),
+                    text("Loading...")
+                        .color(styles::text_color_muted())
+                        .font(NOTO_SANS)
+                        .size(16)
+                ]
+                .align_x(Horizontal::Center),
+            )
             .center(Length::Fill)
             .style(|_theme: &Theme| container::Style {
                 background: Some(styles::background_color().into()),
