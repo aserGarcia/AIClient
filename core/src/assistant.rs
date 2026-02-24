@@ -48,7 +48,6 @@ impl LlamaCpp {
     }
 
     pub fn boot() -> Result<LlamaCpp, LlmError> {
-        // TODO: switch based off backed and OS
         debug!("Starting child process");
         let child_process = process::Command::new(SERVER_EXECUTABLE)
             .args(

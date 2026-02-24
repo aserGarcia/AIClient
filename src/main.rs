@@ -1,4 +1,4 @@
-use convo::screen::{Screen, conversation, loading};
+use convo::screen::{Screen, conversation};
 use iced::widget::text;
 use iced::{Size, Subscription, Task, time, window};
 use std::time::Duration;
@@ -30,20 +30,27 @@ struct Convo {
 
 #[derive(Clone)]
 enum Message {
-    Loading(loading::Message),
     Conversation(conversation::Message),
     Error,
 }
 
 impl Convo {
     fn new() -> (Self, Task<Message>) {
-        let (loading, task) = loading::Loading::new();
-        (
-            Self {
-                screen: Screen::Loading(loading),
-            },
-            task.map(Message::Loading),
-        )
+        let res = conversation::Conversation::new();
+        match res {
+            Ok((conv, task)) => (
+                Self {
+                    screen: Screen::Conversation(conv),
+                },
+                task.map(Message::Conversation),
+            ),
+            Err(e) => (
+                Self {
+                    screen: Screen::Error(e.to_string()),
+                },
+                Task::done(Message::Error),
+            ),
+        }
     }
 
     fn title(&self) -> String {
@@ -52,31 +59,6 @@ impl Convo {
 
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::Loading(message) => {
-                if let Screen::Loading(loading) = &mut self.screen {
-                    let action = loading.update(message);
-                    match action {
-                        loading::Action::None => return Task::none(),
-                        loading::Action::Run(task) => return task.map(Message::Loading),
-                        loading::Action::Continue => {
-                            if let Ok((conversation, task)) = conversation::Conversation::new() {
-                                self.screen = Screen::Conversation(conversation);
-                                return task.map(Message::Conversation);
-                            } else {
-                                self.screen =
-                                    Screen::Error("Error creating conversation struct".to_string());
-                                return Task::done(Message::Error);
-                            }
-                        }
-                        loading::Action::Error(e) => {
-                            self.screen = Screen::Error(e);
-                            return Task::done(Message::Error);
-                        }
-                    }
-                } else {
-                    return Task::none();
-                }
-            }
             Message::Conversation(message) => {
                 if let Screen::Conversation(conversation) = &mut self.screen {
                     let action = conversation.update(message);
@@ -99,7 +81,6 @@ impl Convo {
 
     fn view(&self) -> iced::Element<'_, Message> {
         match &self.screen {
-            Screen::Loading(loading) => loading.view().map(Message::Loading),
             Screen::Conversation(conversation) => conversation.view().map(Message::Conversation),
             Screen::Error(e) => text(format!("Error: {}", e)).size(64).into(),
         }
