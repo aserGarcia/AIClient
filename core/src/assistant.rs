@@ -10,13 +10,12 @@ use async_openai::types::chat::{
 };
 use futures::StreamExt;
 use sipper::{Sipper, sipper};
-use std::process::Stdio;
 use thiserror::Error;
 use tokio::process;
 use tokio::time::{self, Duration};
 use tracing::{debug, error};
 
-const MAX_CHARS: usize = 8000;
+const MAX_CHARS: usize = 4000;
 const PORT: usize = 8081;
 const HOST: &str = "127.0.0.1";
 
@@ -54,7 +53,7 @@ impl LlamaCpp {
         let child_process = process::Command::new(SERVER_EXECUTABLE)
             .args(
                 format!(
-                    "-hf {model_repo} --host {host} --port {port} --context-shift --parallel 1 --no-slots --kv-unified",
+                    "-hf {model_repo} --host {host} --port {port} --no-slots",
                     model_repo = MODEL_REPO_PATH,
                     host = HOST,
                     port = PORT
@@ -62,9 +61,6 @@ impl LlamaCpp {
                 .split_whitespace(),
             )
             .kill_on_drop(true)
-            .stdout(Stdio::piped())
-            .stdin(Stdio::piped())
-            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| LlmError::LoadError(e.to_string()))?;
 
