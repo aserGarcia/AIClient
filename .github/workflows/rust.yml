@@ -48,14 +48,6 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-build-target-
     
-    - name: Cache llama.cpp build
-      uses: actions/cache@v4
-      with:
-        path: /tmp/llama.cpp/build
-        key: ${{ runner.os }}-llama-cpp-${{ env.LLAMA_CPP_VERSION }}
-        restore-keys: |
-          ${{ runner.os }}-llama-cpp-
-    
     - name: Install system dependencies
       run: |
         sudo apt-get update
@@ -95,6 +87,9 @@ jobs:
     
     - name: Build llama-server with CMake (official method)
       run: |
+        # Clean up any existing directory
+        rm -rf /tmp/llama.cpp
+        
         # Clone llama.cpp
         git clone https://github.com/ggml-org/llama.cpp.git /tmp/llama.cpp
         cd /tmp/llama.cpp
