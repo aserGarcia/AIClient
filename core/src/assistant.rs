@@ -1,4 +1,5 @@
 use std::env;
+use std::path::PathBuf;
 
 use crate::chat::CompletionMessage;
 use crate::{MODEL_REPO_PATH, SERVER_EXECUTABLE};
@@ -44,6 +45,43 @@ pub enum Chatting {
     Error(String),
 }
 
+fn get_llama_server_path() -> Result<PathBuf, String> {
+    // Try AppImage (Linux)
+    if let Ok(appdir) = env::var("APPDIR") {
+        let path = PathBuf::from(appdir).join("usr/bin/llama-server");
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    // Try macOS .app bundle
+    if let Ok(exe_path) = env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // Same directory as executable
+            let path = exe_dir.join("llama-server");
+            if path.exists() {
+                return Ok(path);
+            }
+
+            // Resources directory
+            if let Some(contents_dir) = exe_dir.parent() {
+                let path = contents_dir.join("Resources/llama-server");
+                if path.exists() {
+                    return Ok(path);
+                }
+            }
+        }
+    }
+
+    // Try local development
+    let local_path = PathBuf::from("./llama-server");
+    if local_path.exists() {
+        return Ok(local_path);
+    }
+
+    Err("Could not find llama-server binary".to_string())
+}
+
 impl LlamaCpp {
     pub fn url(&self) -> String {
         self.client.config().url("")
@@ -52,11 +90,8 @@ impl LlamaCpp {
     pub fn boot() -> Result<LlamaCpp, LlmError> {
         debug!("Starting child process");
 
-        let server_binary = if let Ok(appdir) = env::var("APPDIR") {
-            format!("{}/llama-server", appdir)
-        } else {
-            "./llama-server".to_string()
-        };
+        let server_binary = get_llama_server_path().map_err(|e| LlmError::LoadError(e))?;
+
         let child_process = process::Command::new(server_binary)
             .args(
                 format!(
