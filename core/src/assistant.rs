@@ -53,9 +53,9 @@ impl LlamaCpp {
         debug!("Starting child process");
 
         let server_binary = if let Ok(appdir) = env::var("APPDIR") {
-            format!("{}/server/llama-server", appdir)
+            format!("{}/llama-server", appdir)
         } else {
-            "./server/llama-server".to_string()
+            "./llama-server".to_string()
         };
         let child_process = process::Command::new(server_binary)
             .args(

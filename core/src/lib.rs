@@ -7,4 +7,4 @@ pub const MODEL_NAME: &str = "Phi-3-mini-4k-instruct-q4.gguf";
 pub const MODEL_REPO_PATH: &str =
     "microsoft/Phi-3-mini-4k-instruct-gguf:Phi-3-mini-4k-instruct-q4.gguf";
 pub const DOWNLOAD_URL: &str = "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf";
-pub const SERVER_EXECUTABLE: &str = "./server/llama-server";
+pub const SERVER_EXECUTABLE: &str = "./llama-server";
