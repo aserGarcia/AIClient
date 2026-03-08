@@ -170,20 +170,29 @@ jobs:
         grep -A 5 "\[package.metadata.appimage\]" Cargo.toml || echo "Config added"
     
     - name: Build AppImage with cargo-appimage
-      env:
-        CXX: g++-9
-        CC: gcc-9
       run: |
-        # Unset any problematic flags
+        # Explicitly unset old compiler variables
+        unset CXX
+        unset CC
         unset CXXFLAGS
         unset LDFLAGS
+        
+        # Verify GCC version
+        echo "=== Compiler versions ==="
+        gcc --version
+        g++ --version
+        which gcc
+        which g++
         
         # Verify all required files are present
         echo "=== Files before build ==="
         ls -la llama-server icon.png
         
-        # Build the AppImage
+        # Build the AppImage (GCC 11 is now default)
         cargo appimage --verbose
+      env:
+        CC: ""
+        CXX: ""
     
     - name: Find and verify AppImage
       id: find_appimage
