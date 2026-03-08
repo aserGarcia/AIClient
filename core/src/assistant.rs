@@ -1,3 +1,5 @@
+use std::env;
+
 use crate::chat::CompletionMessage;
 use crate::{MODEL_REPO_PATH, SERVER_EXECUTABLE};
 use async_openai::Client;
@@ -49,7 +51,13 @@ impl LlamaCpp {
 
     pub fn boot() -> Result<LlamaCpp, LlmError> {
         debug!("Starting child process");
-        let child_process = process::Command::new(SERVER_EXECUTABLE)
+
+        let server_binary = if let Ok(appdir) = env::var("APPDIR") {
+            format!("{}/servers/llama-cpu-ubuntu-x64/llama-server", appdir)
+        } else {
+            "./servers/llama-server".to_string()
+        };
+        let child_process = process::Command::new(server_binary)
             .args(
                 format!(
                     "-hf {model_repo} --host {host} --port {port} --no-slots",
@@ -61,7 +69,10 @@ impl LlamaCpp {
             )
             .kill_on_drop(true)
             .spawn()
-            .map_err(|e| LlmError::LoadError(e.to_string()))?;
+            .map_err(|e| {
+                debug!("{}", e.to_string());
+                LlmError::LoadError(e.to_string())
+            })?;
 
         let config = OpenAIConfig::new().with_api_base(format!("http://{}:{}", HOST, PORT));
         let client = Client::with_config(config);
