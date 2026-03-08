@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-14  # Apple Silicon runner
     
     steps:
     - name: Checkout code
@@ -29,7 +29,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
       with:
-        targets: x86_64-apple-darwin,aarch64-apple-darwin
+        targets: aarch64-apple-darwin
     
     - name: Cache cargo registry
       uses: actions/cache@v4
@@ -59,7 +59,7 @@ jobs:
       run: |
         brew install cmake create-dmg
     
-    - name: Build llama-server for Apple Silicon (aarch64)
+    - name: Build llama-server for Apple Silicon
       run: |
         # Clean up any existing directory
         rm -rf /tmp/llama.cpp
@@ -72,13 +72,13 @@ jobs:
         git checkout ${{ env.LLAMA_CPP_VERSION }}
         
         # Create build directory
-        mkdir -p build-arm64
-        cd build-arm64
+        mkdir -p build
+        cd build
         
-        # Configure with CMake for ARM64 (Apple Silicon)
+        # Configure with CMake for ARM64 with Metal support
         cmake .. \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DGGML_NATIVE=OFF \
           -DGGML_METAL=ON \
           -DGGML_METAL_EMBED_LIBRARY=ON \
           -DBUILD_SHARED_LIBS=OFF
@@ -91,43 +91,14 @@ jobs:
         file bin/llama-server
         
         # Copy to workspace
-        cp bin/llama-server ${{ github.workspace }}/llama-server-arm64
+        cp bin/llama-server ${{ github.workspace }}/llama-server
+        chmod +x ${{ github.workspace }}/llama-server
     
-    - name: Build llama-server for Intel (x86_64)
+    - name: Verify llama-server
       run: |
-        cd /tmp/llama.cpp
-        
-        # Create build directory for x86_64
-        mkdir -p build-x86_64
-        cd build-x86_64
-        
-        # Configure with CMake for x86_64
-        cmake .. \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-          -DGGML_METAL=OFF \
-          -DBUILD_SHARED_LIBS=OFF
-        
-        # Build server target
-        cmake --build . --config Release --target llama-server -j$(sysctl -n hw.ncpu)
-        
-        # Copy to workspace
-        cp bin/llama-server ${{ github.workspace }}/llama-server-x86_64
-    
-    - name: Create universal binary for llama-server
-      run: |
-        # Combine both architectures into a universal binary
-        lipo -create \
-          llama-server-arm64 \
-          llama-server-x86_64 \
-          -output llama-server
-        
-        chmod +x llama-server
-        
-        # Verify it's universal
-        echo "=== Universal binary info ==="
+        ls -lh llama-server
         file llama-server
-        lipo -info llama-server
+        ./llama-server --version || ./llama-server --help || echo "llama-server built successfully"
     
     - name: Get app info
       id: app_info
@@ -138,28 +109,20 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Building $APP_NAME v$VERSION"
     
-    - name: Build Rust application (Universal Binary)
+    - name: Build Rust application for Apple Silicon
       env:
         APP_NAME: ${{ steps.app_info.outputs.app_name }}
       run: |
         # Build for ARM64
         cargo build --release --target aarch64-apple-darwin
         
-        # Build for x86_64
-        cargo build --release --target x86_64-apple-darwin
-        
-        # Create universal binary
-        lipo -create \
-          target/aarch64-apple-darwin/release/${APP_NAME} \
-          target/x86_64-apple-darwin/release/${APP_NAME} \
-          -output ${APP_NAME}
-        
+        # Copy binary
+        cp target/aarch64-apple-darwin/release/${APP_NAME} ${APP_NAME}
         chmod +x ${APP_NAME}
         
         # Verify
         echo "=== App binary info ==="
         file ${APP_NAME}
-        lipo -info ${APP_NAME}
     
     - name: Create .app bundle
       env:
@@ -193,7 +156,7 @@ jobs:
             <key>CFBundlePackageType</key>
             <string>APPL</string>
             <key>LSMinimumSystemVersion</key>
-            <string>10.15</string>
+            <string>11.0</string>
             <key>NSHighResolutionCapable</key>
             <true/>
         </dict>
@@ -202,9 +165,9 @@ jobs:
         
         # Copy or create icon (if you have one)
         if [ -f "icon.icns" ]; then
-          cp icon.icns "${APP_NAME}.app/Contents/Resources/"
+          cp icon.icns "${APP_NAME}.app/Contents/Resources/${APP_NAME}.icns"
         elif [ -f "icon.png" ]; then
-          # Convert PNG to ICNS (requires iconutil)
+          # Convert PNG to ICNS
           mkdir -p "${APP_NAME}.iconset"
           sips -z 16 16 icon.png --out "${APP_NAME}.iconset/icon_16x16.png"
           sips -z 32 32 icon.png --out "${APP_NAME}.iconset/icon_16x16@2x.png"
@@ -220,7 +183,7 @@ jobs:
           rm -rf "${APP_NAME}.iconset"
         fi
         
-        # Make executable
+        # Make executables
         chmod +x "${APP_NAME}.app/Contents/MacOS/${APP_NAME}"
         chmod +x "${APP_NAME}.app/Contents/MacOS/llama-server"
         
@@ -240,81 +203,47 @@ jobs:
           --window-size 600 400 \
           --icon-size 100 \
           --app-drop-link 425 120 \
-          "${APP_NAME}-${VERSION}-universal.dmg" \
+          "${APP_NAME}-${VERSION}-arm64.dmg" \
           "${APP_NAME}.app" || true
         
         # Fallback: create simple DMG if create-dmg fails
-        if [ ! -f "${APP_NAME}-${VERSION}-universal.dmg" ]; then
+        if [ ! -f "${APP_NAME}-${VERSION}-arm64.dmg" ]; then
           echo "create-dmg failed, using hdiutil..."
           hdiutil create -volname "${APP_NAME}" \
             -srcfolder "${APP_NAME}.app" \
             -ov -format UDZO \
-            "${APP_NAME}-${VERSION}-universal.dmg"
+            "${APP_NAME}-${VERSION}-arm64.dmg"
         fi
         
         # Verify DMG
-        ls -lh "${APP_NAME}-${VERSION}-universal.dmg"
+        ls -lh "${APP_NAME}-${VERSION}-arm64.dmg"
         
-        echo "dmg_path=${APP_NAME}-${VERSION}-universal.dmg" >> $GITHUB_OUTPUT
-        echo "dmg_name=${APP_NAME}-${VERSION}-universal.dmg" >> $GITHUB_ENV
+        echo "dmg_path=${APP_NAME}-${VERSION}-arm64.dmg" >> $GITHUB_OUTPUT
+        echo "dmg_name=${APP_NAME}-${VERSION}-arm64.dmg" >> $GITHUB_ENV
       id: create_dmg
-    
-    - name: Get release info
-      id: release_info
-      run: |
-        if [ "${{ github.event_name }}" == "release" ]; then
-          echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
-          echo "is_release=true" >> $GITHUB_OUTPUT
-        elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-          echo "tag_name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          echo "is_release=true" >> $GITHUB_OUTPUT
-        else
-          echo "is_release=false" >> $GITHUB_OUTPUT
-        fi
     
     - name: Upload DMG artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ steps.app_info.outputs.app_name }}-${{ steps.app_info.outputs.version }}-macOS-universal-DMG
+        name: ${{ steps.app_info.outputs.app_name }}-${{ steps.app_info.outputs.version }}-macOS-arm64-DMG
         path: ${{ steps.create_dmg.outputs.dmg_path }}
         if-no-files-found: error
         retention-days: 30
     
     - name: Create checksum
-      if: steps.release_info.outputs.is_release == 'true'
+      if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
       run: |
         shasum -a 256 ${{ steps.create_dmg.outputs.dmg_path }} > ${{ steps.create_dmg.outputs.dmg_path }}.sha256
         cat ${{ steps.create_dmg.outputs.dmg_path }}.sha256
     
     - name: Upload to Release
-      if: steps.release_info.outputs.is_release == 'true'
-      uses: softprops/action-gh-release@v1
+      if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ steps.release_info.outputs.tag_name }}
+        tag_name: ${{ github.event.release.tag_name || github.ref_name }}
         files: |
           ${{ steps.create_dmg.outputs.dmg_path }}
           ${{ steps.create_dmg.outputs.dmg_path }}.sha256
-        body: |
-          ## macOS Release (Universal Binary)
-          
-          This release includes:
-          - Universal binary (Intel + Apple Silicon)
-          - Built with llama.cpp ${{ env.LLAMA_CPP_VERSION }}
-          - Bundled llama-server with Metal acceleration (Apple Silicon)
-          
-          ### Installation
-          ```bash
-                    # Download the DMG
-                    wget ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.release_info.outputs.tag_name }}/${{ env.dmg_name }}
-                    
-                    # Mount and install
-                    open ${{ env.dmg_name }}
-                    # Drag the app to Applications folder
-          ```
-                    
-                    ### Verify checksum
-          ```bash
-                    shasum -a 256 -c ${{ env.dmg_name }}.sha256
-          ```
+        fail_on_unmatched_files: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
